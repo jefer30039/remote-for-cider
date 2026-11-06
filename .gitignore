@@ -1,0 +1,19 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+
+# Notas, referencias y configuración personal (no se publican)
+CLAUDE.md
+cider-remoto-ios-hallazgos.md
+# Código de Cider extraído de su bundle: es de sus autores, no se redistribuye.
+docs/referencia/
+
+# Firma de las versiones (nunca en el repositorio)
+*.jks
+*.keystore
+keystore.properties
+puente/

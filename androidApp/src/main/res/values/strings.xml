@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Remote for Cider</string>
+
+    <!-- Pestañas y secciones -->
+    <string name="tab_home">Home</string>
+    <string name="tab_new">New</string>
+    <string name="tab_radio">Radio</string>
+    <string name="tab_library">Library</string>
+    <string name="tab_search">Search</string>
+    <string name="library_playlists">Playlists</string>
+    <string name="library_artists">Artists</string>
+    <string name="library_albums">Albums</string>
+    <string name="library_songs">Songs</string>
+    <string name="library_recently_added">Recently Added</string>
+
+    <!-- Navegación -->
+    <string name="action_back">Back</string>
+    <string name="action_sidebar">Sidebar</string>
+    <string name="action_close_sidebar">Close Sidebar</string>
+    <string name="action_more">More Options</string>
+    <string name="action_options">Options</string>
+
+    <!-- Conexión -->
+    <string name="connection_connected_to">Connected to %1$s</string>
+    <string name="connection_searching">Searching for your computer…</string>
+    <string name="connection_find">Find Computer on Network</string>
+    <string name="connection_change_address">Change Address…</string>
+    <string name="connection_forget">Forget This Computer</string>
+    <string name="connection_address_title">Computer Address</string>
+    <string name="connection_address_label">IP or hostname</string>
+    <string name="connection_address_hint">Your pairing is kept; no need to approve again in Cider.</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+
+    <!-- Estado -->
+    <string name="status_not_playing">Not Playing</string>
+    <string name="status_searching_network">Searching for your computer on the network…</string>
+    <string name="status_offline">Can\'t reach Cider</string>
+    <string name="status_connecting">Connecting…</string>
+
+    <!-- Reproducción -->
+    <string name="action_open_now_playing">Open Now Playing</string>
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_next">Next</string>
+    <string name="action_previous">Previous</string>
+    <string name="action_shuffle">Shuffle</string>
+    <string name="action_repeat">Repeat</string>
+    <string name="action_lyrics">Lyrics</string>
+    <string name="action_play_next">Play Next</string>
+    <string name="action_play_last">Play Last</string>
+    <string name="action_add_to_library">Add to Library</string>
+    <string name="action_remove_from_library">Remove from Library</string>
+    <string name="action_favorite">Favorite</string>
+    <string name="action_unfavorite">Remove from Favorites</string>
+    <string name="action_shuffle_on">Turn On Shuffle</string>
+    <string name="action_shuffle_off">Turn Off Shuffle</string>
+    <string name="playback_position">Position %1$s of %2$s</string>
+    <string name="lyrics_none">This song has no lyrics.</string>
+
+    <!-- Salida y volumen -->
+    <string name="volume_label">Cider · %1$d%%</string>
+    <string name="volume_description">Cider volume %1$d%%</string>
+    <string name="device_computer">Computer</string>
+    <string name="device_mac">Mac</string>
+    <string name="device_description">Playing on %1$s. Volume and output</string>
+    <string name="speaker_bass">Bass for speaker</string>
+    <string name="speaker_changing">Changing…</string>
+    <string name="speaker_preset">EasyEffects · preset %1$s</string>
+
+    <!-- Cola -->
+    <string name="up_next">Up Next</string>
+    <string name="repeat_off">Repeat: Off</string>
+    <string name="repeat_all">Repeat: All</string>
+    <string name="repeat_one">Repeat: One</string>
+    <string name="queue_empty">Nothing else in the queue.</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_reorder">Reorder</string>
+
+    <!-- Emparejamiento -->
+    <string name="pairing_title">Connect to Cider</string>
+    <string name="pairing_intro">Control Cider from this device. Enter your computer\'s address on your Wi-Fi network; Cider will ask for permission.</string>
+    <string name="pairing_field_host">Computer</string>
+    <string name="pairing_field_port">Port</string>
+    <string name="pairing_scan">Search Network</string>
+    <string name="pairing_scanning">Searching for Cider on the network…</string>
+    <string name="pairing_waiting">Allow the request in Cider…</string>
+    <string name="action_connect">Connect</string>
+    <string name="pairing_not_found_network">Cider wasn\'t found on this network. Make sure your computer is on the same Wi-Fi.</string>
+    <string name="pairing_denied">The request was declined in Cider. Try again and click Allow.</string>
+    <string name="pairing_timed_out">Nobody answered in Cider within 2 minutes. Try again with your computer in front of you.</string>
+    <string name="pairing_try_later">Cider asks you to wait before trying again.</string>
+    <string name="pairing_try_later_seconds">Cider asks you to wait %1$d s before trying again.</string>
+    <string name="pairing_failed">Cider wasn\'t found at %1$s:%2$s. Make sure your computer is on and connected to the same Wi-Fi.</string>
+
+    <!-- Contenido -->
+    <string name="home_load_error">Couldn\'t load Home</string>
+    <string name="load_error">Couldn\'t load</string>
+    <string name="songs_load_error">Couldn\'t load songs</string>
+    <string name="empty_playlists">No playlists</string>
+    <string name="empty_artists">No artists</string>
+    <string name="empty_albums">No albums</string>
+    <string name="empty_songs">No songs</string>
+    <string name="label_playlist">Playlist</string>
+    <string name="label_album">Album</string>
+    <string name="label_song">Song</string>
+    <string name="label_artist">Artist</string>
+    <plurals name="song_count">
+        <item quantity="one">%d song</item>
+        <item quantity="other">%d songs</item>
+    </plurals>
+    <plurals name="minute_count">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+    <!-- "12 songs, 45 minutes" -->
+    <string name="collection_footer">%1$s, %2$s</string>
+
+    <!-- Búsqueda -->
+    <string name="search_placeholder">Artists, Songs, Albums, and More</string>
+    <string name="search_clear">Clear Search</string>
+    <string name="search_error">Couldn\'t search</string>
+    <string name="search_no_results">No results</string>
+    <string name="search_try_other">Try different words.</string>
+    <string name="explicit">Explicit</string>
+</resources>

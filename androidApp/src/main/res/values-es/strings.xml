@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Remote for Cider</string>
+
+    <!-- Pestañas y secciones -->
+    <string name="tab_home">Inicio</string>
+    <string name="tab_new">Nuevo</string>
+    <string name="tab_radio">Radio</string>
+    <string name="tab_library">Biblioteca</string>
+    <string name="tab_search">Buscar</string>
+    <string name="library_playlists">Playlists</string>
+    <string name="library_artists">Artistas</string>
+    <string name="library_albums">Álbumes</string>
+    <string name="library_songs">Canciones</string>
+    <string name="library_recently_added">Agregados recientemente</string>
+
+    <!-- Navegación -->
+    <string name="action_back">Atrás</string>
+    <string name="action_sidebar">Barra lateral</string>
+    <string name="action_close_sidebar">Cerrar barra lateral</string>
+    <string name="action_more">Más opciones</string>
+    <string name="action_options">Opciones</string>
+
+    <!-- Conexión -->
+    <string name="connection_connected_to">Conectado a %1$s</string>
+    <string name="connection_searching">Buscando el PC…</string>
+    <string name="connection_find">Buscar el PC en la red</string>
+    <string name="connection_change_address">Cambiar dirección…</string>
+    <string name="connection_forget">Olvidar este PC</string>
+    <string name="connection_address_title">Dirección del PC</string>
+    <string name="connection_address_label">IP o nombre</string>
+    <string name="connection_address_hint">Se conserva el emparejamiento; no hace falta aprobar de nuevo en Cider.</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_cancel">Cancelar</string>
+
+    <!-- Estado -->
+    <string name="status_not_playing">Nada sonando</string>
+    <string name="status_searching_network">Buscando el PC en la red…</string>
+    <string name="status_offline">Sin conexión con Cider</string>
+    <string name="status_connecting">Conectando…</string>
+
+    <!-- Reproducción -->
+    <string name="action_open_now_playing">Abrir reproducción</string>
+    <string name="action_play">Reproducir</string>
+    <string name="action_pause">Pausa</string>
+    <string name="action_next">Siguiente</string>
+    <string name="action_previous">Anterior</string>
+    <string name="action_shuffle">Aleatorio</string>
+    <string name="action_repeat">Repetir</string>
+    <string name="action_lyrics">Letra</string>
+    <string name="action_play_next">Reproducir a continuación</string>
+    <string name="action_play_last">Reproducir al final</string>
+    <string name="action_add_to_library">Añadir a la biblioteca</string>
+    <string name="action_remove_from_library">Quitar de la biblioteca</string>
+    <string name="action_favorite">Añadir a favoritos</string>
+    <string name="action_unfavorite">Quitar de favoritos</string>
+    <string name="action_shuffle_on">Activar aleatorio</string>
+    <string name="action_shuffle_off">Desactivar aleatorio</string>
+    <string name="playback_position">Posición %1$s de %2$s</string>
+    <string name="lyrics_none">Esta canción no tiene letra.</string>
+
+    <!-- Salida y volumen -->
+    <string name="volume_label">Cider · %1$d %%</string>
+    <string name="volume_description">Volumen de Cider %1$d %%</string>
+    <string name="device_computer">Computadora</string>
+    <string name="device_mac">Mac</string>
+    <string name="device_description">Sonando en %1$s. Volumen y salida</string>
+    <string name="speaker_bass">Graves para la bocina</string>
+    <string name="speaker_changing">Cambiando…</string>
+    <string name="speaker_preset">EasyEffects · preset %1$s</string>
+
+    <!-- Cola -->
+    <string name="up_next">A continuación</string>
+    <string name="repeat_off">Repetir: no</string>
+    <string name="repeat_all">Repetir: todo</string>
+    <string name="repeat_one">Repetir: una</string>
+    <string name="queue_empty">No hay nada más en la cola.</string>
+    <string name="action_remove">Quitar</string>
+    <string name="action_reorder">Reordenar</string>
+
+    <!-- Emparejamiento -->
+    <string name="pairing_title">Conectar con Cider</string>
+    <string name="pairing_intro">Controla Cider desde este dispositivo. Escribe la dirección del PC en tu Wi-Fi; Cider te pedirá permiso.</string>
+    <string name="pairing_field_host">PC</string>
+    <string name="pairing_field_port">Puerto</string>
+    <string name="pairing_scan">Buscar en la red</string>
+    <string name="pairing_scanning">Buscando Cider en la red…</string>
+    <string name="pairing_waiting">Pulsa Permitir en Cider…</string>
+    <string name="action_connect">Conectar</string>
+    <string name="pairing_not_found_network">No se encontró Cider en esta red. Comprueba que el PC está en la misma Wi-Fi.</string>
+    <string name="pairing_denied">Se rechazó la solicitud en Cider. Vuelve a intentarlo y pulsa Permitir.</string>
+    <string name="pairing_timed_out">Nadie respondió en Cider en 2 minutos. Vuelve a intentarlo con el PC delante.</string>
+    <string name="pairing_try_later">Cider pide esperar antes de otro intento.</string>
+    <string name="pairing_try_later_seconds">Cider pide esperar %1$d s antes de otro intento.</string>
+    <string name="pairing_failed">No se encontró Cider en %1$s:%2$s. Comprueba que el PC está encendido y en la misma Wi-Fi.</string>
+
+    <!-- Contenido -->
+    <string name="home_load_error">No se pudo cargar el inicio</string>
+    <string name="load_error">No se pudo cargar</string>
+    <string name="songs_load_error">No se pudieron cargar las canciones</string>
+    <string name="empty_playlists">No hay playlists</string>
+    <string name="empty_artists">No hay artistas</string>
+    <string name="empty_albums">No hay álbumes</string>
+    <string name="empty_songs">No hay canciones</string>
+    <string name="label_playlist">Playlist</string>
+    <string name="label_album">Álbum</string>
+    <string name="label_song">Canción</string>
+    <string name="label_artist">Artista</string>
+    <plurals name="song_count">
+        <item quantity="one">%d canción</item>
+        <item quantity="many">%d canciones</item>
+        <item quantity="other">%d canciones</item>
+    </plurals>
+    <plurals name="minute_count">
+        <item quantity="one">%d minuto</item>
+        <item quantity="many">%d minutos</item>
+        <item quantity="other">%d minutos</item>
+    </plurals>
+    <!-- "12 canciones, 45 minutos" -->
+    <string name="collection_footer">%1$s, %2$s</string>
+
+    <!-- Búsqueda -->
+    <string name="search_placeholder">Artistas, canciones, álbumes y más</string>
+    <string name="search_clear">Borrar búsqueda</string>
+    <string name="search_error">No se pudo buscar</string>
+    <string name="search_no_results">Sin resultados</string>
+    <string name="search_try_other">Prueba con otras palabras.</string>
+    <string name="explicit">Explícito</string>
+</resources>
