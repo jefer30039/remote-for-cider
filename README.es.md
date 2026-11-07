@@ -1,5 +1,7 @@
 # Remote for Cider
 
+<p align="center"><img src="docs/capturas/mockup.png" width="900" alt="Remote for Cider en un teléfono junto a Cider en un portátil"></p>
+
 [English](README.md)
 
 Control remoto nativo para Android de [Cider](https://cider.sh), el cliente de Apple Music para escritorio. Controla la reproducción, explora tu biblioteca, lee letras sincronizadas y maneja la cola desde el teléfono o la tablet, con una interfaz inspirada en Apple Music.
