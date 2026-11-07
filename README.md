@@ -18,6 +18,16 @@ A native Android remote for [Cider](https://cider.sh), the Apple Music desktop c
 - **Finds your computer automatically** on the local network, including your phone's hotspot, so it keeps working when the computer's IP changes.
 - English and Spanish.
 
+## Screenshots
+
+<p>
+  <img src="docs/capturas/inicio.png" width="180" alt="Home">
+  <img src="docs/capturas/album.png" width="180" alt="Album">
+  <img src="docs/capturas/reproduccion.png" width="180" alt="Now Playing">
+  <img src="docs/capturas/letra.png" width="180" alt="Lyrics">
+  <img src="docs/capturas/biblioteca.png" width="180" alt="Library">
+</p>
+
 ## Requirements
 
 - Cider 4 with its API enabled (WebSockets/API in Cider's connectivity settings). Remote for Cider pairs with Cider's own token system: Cider asks you to approve the app.

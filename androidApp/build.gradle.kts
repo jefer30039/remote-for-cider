@@ -16,11 +16,11 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "cider.remote"
+        applicationId = "io.github.jefer30039.remoteforcider"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
     }
 
     buildFeatures {

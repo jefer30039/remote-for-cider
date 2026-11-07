@@ -18,6 +18,16 @@ Control remoto nativo para Android de [Cider](https://cider.sh), el cliente de A
 - **Encuentra la computadora sola** en la red local, incluido el hotspot del teléfono, así que sigue funcionando aunque cambie la IP.
 - En inglés y español.
 
+## Capturas
+
+<p>
+  <img src="docs/capturas/inicio.png" width="180" alt="Inicio">
+  <img src="docs/capturas/album.png" width="180" alt="Álbum">
+  <img src="docs/capturas/reproduccion.png" width="180" alt="Reproducción">
+  <img src="docs/capturas/letra.png" width="180" alt="Letra">
+  <img src="docs/capturas/biblioteca.png" width="180" alt="Biblioteca">
+</p>
+
 ## Requisitos
 
 - Cider 4 con su API activada (WebSockets/API en los ajustes de conectividad de Cider). Remote for Cider se empareja con el sistema de tokens de Cider: Cider te pide que apruebes la app.
