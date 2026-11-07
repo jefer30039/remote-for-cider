@@ -163,6 +163,13 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
 
     val dismissDrag = Modifier.sheetDrag(sheet)
     val corner = if (sheet.position.value > 0f) 24.dp else 0.dp
+    // Portada animada (ya consultada de antemano por PrefetchNowPlaying): la hoja abre con su forma final.
+    val catalogId = state.track?.catalogId
+    val cover by produceState(AnimatedCovers.peek(catalogId), catalogId) {
+        value = AnimatedCovers.peek(catalogId)
+        value = AnimatedCovers.load(remote, catalogId)
+    }
+    val video = if (wide) null else cover?.tall
 
     Box(
         Modifier.fillMaxSize()
@@ -170,11 +177,14 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
             .background(Brush.linearGradient(listOf(background.lighter(1.12f), background, background.lighter(0.92f)))),
     ) {
-        // Fondo: campo de colores de la carátula con animación lenta (Apple Music), también en tablet.
-        // Con letra o cola, más oscuro.
-        ColorField(rememberArtworkPalette(state.track?.artwork), background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
+        // Fondo: campo de colores de la carátula con animación lenta (Apple Music), también en tablet;
+        // con letra o cola, más oscuro. Con portada animada a la vista, Apple no anima el fondo: queda el
+        // color plano de la carátula (el degradado de la caja), y el vídeo se funde en él.
+        if (video == null || mode != SheetMode.Artwork) {
+            ColorField(rememberArtworkPalette(state.track?.artwork), background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
+        }
         if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag)
-        else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag)
+        else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag, video)
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
             Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp)
@@ -242,14 +252,8 @@ private fun PhoneSheet(
     onMode: (SheetMode) -> Unit,
     background: Color,
     dismissDrag: Modifier,
+    video: String?,
 ) {
-    val catalogId = state.track?.catalogId
-    // Ya consultada de antemano (PrefetchNowPlaying): la hoja abre con su forma final.
-    val cover by produceState(AnimatedCovers.peek(catalogId), catalogId) {
-        value = AnimatedCovers.peek(catalogId)
-        value = AnimatedCovers.load(remote, catalogId)
-    }
-    val video = cover?.tall
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth
