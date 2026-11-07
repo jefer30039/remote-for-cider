@@ -196,6 +196,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     val barLabel = animateColorAsState(if (darkBar) Color.White else Color.Black, tween(250), label = "textoBarra")
     val topLabel = animateColorAsState(if (darkTop) Color.White else Color.Black, tween(250), label = "textoArriba")
     val barVeil = androidx.compose.runtime.rememberUpdatedState(if (darkBar) Color(0xFF121212).copy(alpha = 0.4f) else Color(0xFFFAFAFA).copy(alpha = 0.4f))
+    val miniVeil = androidx.compose.runtime.rememberUpdatedState(if (darkMini) Color(0xFF121212).copy(alpha = 0.4f) else Color(0xFFFAFAFA).copy(alpha = 0.4f))
     // Fuente para la barra de pestañas de Kyant: la misma capa de la página que usan
     // las piezas propias (grabarla dos veces por fotograma costaba hilo de UI). Antes
     // de Android 13 no hay capa propia y se graba con layerBackdrop.
@@ -358,7 +359,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             ) {
                 if (hasTrack) MiniPlayer(
                     remote, state, onOpen = { openSheet(SheetMode.Artwork) }, haze = haze,
-                    compact = { minimize.value }, label = { miniLabel.value },
+                    compact = { minimize.value }, label = { miniLabel.value }, container = { miniVeil.value },
                     modifier = Modifier.height(MiniHeight).layout { measurable, constraints ->
                         val p = minimize.value.coerceIn(0f, 1f)
                         val shift = (pillShift.toPx() * p).roundToInt()

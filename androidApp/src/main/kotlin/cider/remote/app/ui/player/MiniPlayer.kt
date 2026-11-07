@@ -56,6 +56,12 @@ import cider.remote.app.ui.components.TintedIcon
 import androidx.compose.foundation.text.BasicText
 import cider.remote.app.ui.components.glass
 import cider.remote.app.ui.components.glassEdge
+import cider.remote.app.ui.components.rememberSharedBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.shapes.Capsule
 import cider.remote.app.ui.components.GlassBackdrop
 import cider.remote.app.ui.components.combinedClickableCompat
 
@@ -71,10 +77,17 @@ fun MiniPlayer(
     compact: () -> Float = { 0f },
     /** Color de texto e iconos (blanco o negro según lo que hay detrás); leído al dibujar. */
     label: (() -> Color)? = null,
+    /** Velo del vidrio (el mismo que el de la barra de pestañas), leído al dibujar. */
+    container: (() -> Color)? = null,
 ) {
     val track = state.track
     val shape = CircleShape
     val openDescription = stringResource(R.string.action_open_now_playing)
+    // El mismo vidrio que la barra de pestañas (Kyant): vibrancia, desenfoque 8 dp, lente 24 dp,
+    // brillo del canto y sombra propia, sobre la misma capa de la página.
+    val backdrop = haze?.let { rememberSharedBackdrop(it) }
+    val themeContainer = if (Apple.colors.isDark) Color(0xFF121212).copy(alpha = 0.4f) else Color(0xFFFAFAFA).copy(alpha = 0.4f)
+    val veil: () -> Color = container ?: { themeContainer }
     val themeLabel = Apple.colors.label
     val themeSecondary = Apple.colors.secondaryLabel
     // Colores leídos al dibujar (ColorProducer y TintedIcon): la animación de tono no recompone.
@@ -82,9 +95,19 @@ fun MiniPlayer(
     val secondary: () -> Color = { label?.invoke()?.copy(alpha = 0.6f) ?: themeSecondary }
     Row(
         modifier.fillMaxWidth()
-            .shadow(12.dp, shape, ambientColor = Color.Black.copy(alpha = 0.4f))
-            .clip(shape).then(if (haze != null) Modifier.glass(haze) else Modifier.background(Apple.colors.miniPlayer))
-            .then(if (haze != null) Modifier.glassEdge(shape) else Modifier.border(0.5.dp, Apple.colors.circleBorder, shape))
+            .then(
+                if (backdrop != null) Modifier.drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { Capsule() },
+                    effects = {
+                        vibrancy()
+                        blur(8f.dp.toPx())
+                        lens(24f.dp.toPx(), 24f.dp.toPx())
+                    },
+                    onDrawSurface = { drawRect(veil()) },
+                ) else Modifier.shadow(12.dp, shape, ambientColor = Color.Black.copy(alpha = 0.4f))
+                    .clip(shape).background(Apple.colors.miniPlayer).border(0.5.dp, Apple.colors.circleBorder, shape),
+            )
             .combinedClickableCompat(onClick = onOpen)
             .semantics { contentDescription = openDescription }
             .padding(start = 12.dp, end = 8.dp),
