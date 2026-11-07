@@ -156,7 +156,10 @@ fun sheetBackground(accent: Color?): Color = (accent ?: Color(0xFF2C2C2E)).asBac
 fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, initialMode: SheetMode = SheetMode.Artwork) {
     var mode by remember { mutableStateOf(initialMode) }
     val wide = LocalWindowLayout.current.expanded
-    val background by animateColorAsState(sheetBackground(rememberArtworkColor(state.track?.artwork)), tween(700), label = "fondo")
+    // Color de fondo: el dominante de la paleta calibrada con la app oficial (brillo × 0,7); hasta que
+    // se calcula, el de `bgColor` oscurecido.
+    val palette = rememberArtworkPalette(state.track?.artwork)
+    val background by animateColorAsState(palette?.firstOrNull() ?: sheetBackground(rememberArtworkColor(state.track?.artwork)), tween(700), label = "fondo")
 
     BackHandler(enabled = sheet.isOpen) { if (mode != SheetMode.Artwork) mode = SheetMode.Artwork else sheet.close() }
     LightStatusBarIcons()
@@ -175,13 +178,13 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         Modifier.fillMaxSize()
             .graphicsLayer { translationY = sheet.position.value * size.height }
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
-            .background(Brush.linearGradient(listOf(background.lighter(1.12f), background, background.lighter(0.92f)))),
+            .background(background),
     ) {
         // Fondo: campo de colores de la carátula con animación lenta (Apple Music), también en tablet;
         // con letra o cola, más oscuro. Con portada animada a la vista, Apple no anima el fondo: queda el
         // color plano de la carátula (el degradado de la caja), y el vídeo se funde en él.
         if (video == null || mode != SheetMode.Artwork) {
-            ColorField(rememberArtworkPalette(state.track?.artwork), background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
+            ColorField(palette, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         }
         if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag)
         else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag, video)

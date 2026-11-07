@@ -106,10 +106,10 @@ private suspend fun extractPalette(context: Context, url: String): List<Color>? 
     (0 until 4).filter { counts[it] > 0 }.sortedByDescending { counts[it] }.map { k ->
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(android.graphics.Color.rgb((centers[k][0] * 255).toInt(), (centers[k][1] * 255).toInt(), (centers[k][2] * 255).toInt()), hsv)
-        // Medido en Apple Music: el color se conserva, con el brillo a ~0,7 (lavanda 0,59 → 0,43;
+        // Medido en Apple Music: el color se conserva, con el brillo a ~0,63 (lavanda 0,68 → 0,43;
         // cielo 0,56 → 0,36) y la saturación algo subida (0,09 → 0,13); los grises siguen grises.
         hsv[1] = (hsv[1] * 1.3f + 0.02f).coerceAtMost(0.8f)
-        hsv[2] = (hsv[2] * 0.7f).coerceIn(0.1f, 0.5f)
+        hsv[2] = (hsv[2] * 0.63f).coerceIn(0.1f, 0.5f)
         Color(android.graphics.Color.HSVToColor(hsv))
     }
 }.getOrNull()
