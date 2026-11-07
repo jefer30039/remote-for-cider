@@ -1,6 +1,7 @@
 package cider.remote.app.ui
 
 import android.Manifest
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -29,6 +30,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Teléfono: solo vertical. Tablet (≥ 600 dp, el mismo umbral que el diseño ancho): libre.
+        requestedOrientation = if (resources.configuration.smallestScreenWidthDp >= 600) {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
