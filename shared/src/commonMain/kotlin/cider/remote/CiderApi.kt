@@ -38,6 +38,8 @@ import io.ktor.http.isSuccess
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -127,6 +129,17 @@ class CiderApi(
     })
     suspend fun queueRemove(index: Int) = command(HttpMethod.Delete, "/queue/items/$index")
     suspend fun queueClear() = command(HttpMethod.Delete, "/queue")
+
+    // --- Playlists (rutas propias de Cider, con permiso library) ---
+    /**
+     * Añade canciones al final de una playlist de la biblioteca. Las del catálogo se
+     * importan antes a la biblioteca (`allowLibraryImport`). Límite de Cider: 10 escrituras/min.
+     */
+    suspend fun playlistAddTracks(playlistId: String, tracks: List<Pair<String, String>>) =
+        command(HttpMethod.Post, "/playlists/$playlistId/tracks", buildJsonObject {
+            put("allowLibraryImport", true)
+            putJsonArray("tracks") { tracks.forEach { (type, id) -> addJsonObject { put("type", type); put("id", id) } } }
+        })
 
     // --- Audio ---
     suspend fun volume(): Double = get<JsonObject>("/audio/volume")["volume"]!!.jsonPrimitive.content.toDouble()

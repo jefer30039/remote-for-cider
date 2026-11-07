@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.unit.Density
 import com.kyant.backdrop.Backdrop
 
@@ -39,7 +39,8 @@ class SharedBackdrop internal constructor(private val glass: GlassBackdrop) : Ba
     override fun DrawScope.drawBackdrop(density: Density, coordinates: LayoutCoordinates?, layerBlock: (GraphicsLayerScope.() -> Unit)?) {
         val c = coordinates ?: return
         if (!c.isAttached) return
-        val offset = c.positionInRoot() - glass.origin
+        // En pantalla, como glass.origin: así también vale desde otra ventana (menús emergentes).
+        val offset = c.positionOnScreen() - glass.origin
         withTransform({
             if (layerBlock != null) {
                 probe.prepare(size, density)

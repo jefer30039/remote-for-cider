@@ -89,6 +89,11 @@ import cider.remote.app.ui.components.ArtworkImage
 import cider.remote.app.ui.components.CircleButton
 import cider.remote.app.ui.components.ConnectionMenuButton
 import cider.remote.app.ui.components.EmptyState
+import cider.remote.app.ui.components.SongMenu
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import cider.remote.app.ui.components.MenuRow
+import cider.remote.app.ui.components.GlassMenu
 import cider.remote.app.ui.components.LargeTitle
 import cider.remote.app.ui.components.ListRow
 import cider.remote.app.ui.components.Monogram
@@ -235,7 +240,7 @@ private fun LazyGridScope.fullWidth(content: @Composable () -> Unit) =
     item(span = { GridItemSpan(maxLineSpan) }) { content() }
 
 @Composable
-private fun Loading() {
+fun Loading() {
     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(color = Apple.colors.secondaryLabel, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
     }
@@ -399,7 +404,7 @@ private fun EntryRow(remote: CiderRemote, e: Entry, onOpen: (Route) -> Unit) {
 
 /** Puntos verticales a la derecha de cada fila (abren el menú contextual). */
 @Composable
-private fun MoreButton(tint: Color = Apple.colors.label, onClick: () -> Unit) {
+fun MoreButton(tint: Color = Apple.colors.label, onClick: () -> Unit) {
     Box(
         Modifier.size(40.dp).clip(CircleShape).combinedClickableCompat(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -421,20 +426,22 @@ fun QueueSwipe(remote: CiderRemote, type: String, id: String, enabled: Boolean =
 /** Menú contextual (pulsación larga o ⋮), como en Apple Music. */
 @Composable
 fun PlayMenu(remote: CiderRemote, expanded: Boolean, onDismiss: () -> Unit, type: String, id: String) {
+    // Las canciones tienen el menú completo de iOS; álbumes y playlists, el corto.
+    if (type.endsWith("songs")) { SongMenu(remote, expanded, onDismiss, type, id); return }
     val scope = rememberCoroutineScope()
     fun run(block: suspend () -> Unit) { onDismiss(); scope.launch { runCatching { block() } } }
-    DropdownMenu(expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(text = { Text(stringResource(R.string.action_play)) }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null) },
-            onClick = { run { if (type.endsWith("songs")) remote.api.playItem(type, id) else remote.api.playCollection(type, id) } })
-        DropdownMenuItem(text = { Text(stringResource(R.string.action_play_next)) }, onClick = { run { remote.api.queueAddNext(type, id) } })
-        DropdownMenuItem(text = { Text(stringResource(R.string.action_play_last)) }, onClick = { run { remote.api.queueAddLater(type, id) } })
+    GlassMenu(expanded, onDismiss, width = 240.dp) {
+        MenuRow(AppleIcons.Play, stringResource(R.string.action_play)) { run { remote.api.playCollection(type, id) } }
+        MenuRow(Icons.AutoMirrored.Rounded.PlaylistPlay, stringResource(R.string.action_play_next)) { run { remote.api.queueAddNext(type, id) } }
+        MenuRow(Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.action_play_last)) { run { remote.api.queueAddLater(type, id) } }
     }
 }
 
 // ---------- Artista ----------
 
+/** Reserva para artistas solo de la biblioteca (sin ficha en el catálogo): foto, nombre y sus álbumes. */
 @Composable
-fun ArtistScreen(remote: CiderRemote, route: Route.Artist, contentPadding: PaddingValues, onOpen: (Route) -> Unit) {
+fun ArtistAlbumsScreen(remote: CiderRemote, route: Route.Artist, contentPadding: PaddingValues, onOpen: (Route) -> Unit) {
     val scope = rememberCoroutineScope()
     val info by produceState<AmItem?>(null, route) {
         value = runCatching { remote.api.artistInfo(route.id, route.catalog) }.getOrNull()
@@ -580,7 +587,6 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
     val cover by produceState<AnimatedCover?>(null, route) {
         value = runCatching { remote.api.animatedCover(route.kind, route.id) }.getOrNull()
     }
-    var menu by remember { mutableStateOf(false) }
     // Color oficial de Apple (catálogo) si lo hay; si no, el color medio de la carátula.
     val official = cover?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() }
     val bg = (official ?: rememberArtworkColor(route.artwork) ?: Color(0xFF2C2C2E)).asBackground()
@@ -728,18 +734,6 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                 )
             }
         }
-        // Botón de opciones arriba a la derecha (el de volver lo pone MainScreen).
-        Box(Modifier.align(Alignment.TopEnd).padding(top = top + 10.dp, end = Margin)) {
-            CircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true },
-                background = Color.White.copy(alpha = 0.12f), tint = Color.White, border = null)
-            DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text(stringResource(R.string.action_play_next)) }, onClick = {
-                    menu = false; scope.launch { runCatching { remote.api.queueAddNext(route.kind, route.id) } }
-                })
-                DropdownMenuItem(text = { Text(stringResource(R.string.action_play_last)) }, onClick = {
-                    menu = false; scope.launch { runCatching { remote.api.queueAddLater(route.kind, route.id) } }
-                })
-            }
-        }
+        // El ⋮ de arriba a la derecha lo pone MainScreen (fuera de la página, como el de volver).
     }
 }

@@ -41,6 +41,51 @@ val LocalPageHidden = staticCompositionLocalOf<State<Boolean>> { mutableStateOf(
  * reproductor no se crea hasta la primera vez que se pide. [maxVideoSize]: tope de
  * resolución (px) para que ExoPlayer elija una variante HLS acorde al tamaño en pantalla.
  */
+/**
+ * Reproductores vivos mientras dura la pantalla que los usa (p. ej. Inicio): una fila
+ * que sale y vuelve a entrar en pantalla reutiliza el suyo en vez de crear otro
+ * (inicializar MediaCodec costaba ~28 ms y una ráfaga de texturas: fotogramas de 20 ms
+ * cada vez que la estantería de portadas entraba o salía). Como mucho [capacity]; el
+ * menos usado se libera.
+ */
+@OptIn(UnstableApi::class)
+class CoverPlayerPool(private val context: android.content.Context, private val capacity: Int = 3) {
+    private val players = LinkedHashMap<String, ExoPlayer>()
+    /**
+     * Pausa general mientras la lista se desplaza: cada fotograma de vídeo cuesta al
+     * RenderThread (importar la textura en Vulkan y redibujar el vidrio); sumado al
+     * desplazamiento, una de cada cuatro imágenes pasaba de 16,7 ms. Se reanuda al parar.
+     */
+    var paused by mutableStateOf(false)
+
+    fun acquire(url: String, maxVideoSize: IntSize?): ExoPlayer {
+        players.remove(url)?.let { players[url] = it; return it }
+        while (players.size >= capacity) players.remove(players.keys.first())?.release()
+        return ExoPlayer.Builder(context).build().apply {
+            volume = 0f
+            repeatMode = Player.REPEAT_MODE_ONE
+            if (maxVideoSize != null) {
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setMaxVideoSize(maxVideoSize.width, maxVideoSize.height).build()
+            }
+            setMediaItem(MediaItem.fromUri(url))
+            prepare()
+            players[url] = this
+        }
+    }
+
+    fun releaseAll() { players.values.forEach { it.release() }; players.clear() }
+}
+
+/** Un pool que vive mientras la pantalla esté compuesta. */
+@Composable
+fun rememberCoverPlayerPool(capacity: Int = 3): CoverPlayerPool {
+    val context = LocalContext.current
+    val pool = remember { CoverPlayerPool(context, capacity) }
+    DisposableEffect(pool) { onDispose { pool.releaseAll() } }
+    return pool
+}
+
 @OptIn(UnstableApi::class)
 @Composable
 fun AnimatedCover(
@@ -48,6 +93,8 @@ fun AnimatedCover(
     modifier: Modifier = Modifier,
     playing: Boolean = true,
     maxVideoSize: IntSize? = null,
+    /** Con pool, el reproductor sobrevive a la salida de pantalla; sin él, se crea y libera aquí. */
+    pool: CoverPlayerPool? = null,
     placeholder: @Composable () -> Unit,
 ) {
     Box(modifier) {
@@ -59,9 +106,17 @@ fun AnimatedCover(
         val hidden by LocalPageHidden.current
         val context = LocalContext.current
         var ready by remember(url) { mutableStateOf(false) }
-        val alpha by animateFloatAsState(if (ready) 1f else 0f, tween(450), label = "portada")
-        val player = remember(url) {
-            ExoPlayer.Builder(context).build().apply {
+        // Con el pool en pausa (la lista se desplaza) la vista del vídeo se funde a la carátula fija
+        // en 120 ms y sale de la composición: una PlayerView/TextureView dentro de la lista, aunque
+        // parada, costaba ~2 ms de hilo UI y un 20 % de fotogramas lentos al desplazar Inicio.
+        // Al asentarse vuelve (el reproductor sigue en el pool) y se funde cuando pinta su fotograma.
+        val paused = pool?.paused ?: false
+        val shown = ready && !paused
+        // Fundidos cortos: mientras el alfa no es 1 la tarjeta entera va en una capa aparte.
+        val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 300 else 120), label = "portada")
+        val attached = !paused || alpha > 0f
+        val player = remember(url, pool) {
+            pool?.acquire(url, maxVideoSize) ?: ExoPlayer.Builder(context).build().apply {
                 volume = 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 if (maxVideoSize != null) {
@@ -69,19 +124,22 @@ fun AnimatedCover(
                         .setMaxVideoSize(maxVideoSize.width, maxVideoSize.height).build()
                 }
                 setMediaItem(MediaItem.fromUri(url))
-                addListener(object : Player.Listener {
-                    override fun onRenderedFirstFrame() { ready = true }
-                })
                 prepare()
             }
         }
-        DisposableEffect(player) { onDispose { player.release() } }
-        val active = playing && !hidden
+        // El primer fotograma en esta superficie (también al volver con un reproductor del pool).
+        DisposableEffect(player) {
+            val listener = object : Player.Listener { override fun onRenderedFirstFrame() { ready = true } }
+            player.addListener(listener)
+            onDispose { player.removeListener(listener); if (pool == null) player.release() else player.pause() }
+        }
+        val active = playing && !hidden && !paused
         LifecycleResumeEffect(player, active) {
             if (active) player.play() else player.pause()
             onPauseOrDispose { player.pause() }
         }
-        AndroidView(
+        if (attached) DisposableEffect(Unit) { onDispose { ready = false } }
+        if (attached) AndroidView(
             factory = { ctx ->
                 (LayoutInflater.from(ctx).inflate(R.layout.animated_cover, null, false) as PlayerView).apply {
                     this.player = player

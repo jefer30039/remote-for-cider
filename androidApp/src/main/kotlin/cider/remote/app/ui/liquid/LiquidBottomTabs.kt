@@ -12,7 +12,6 @@ import androidx.compose.animation.core.spring
 import cider.remote.app.ui.Apple
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +23,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -85,19 +86,21 @@ fun LiquidBottomTabs(
 
     val tabsBackdrop = rememberLayerBackdrop()
 
-    BoxWithConstraints(
-        modifier,
+    // Ancho medido en un estado, no BoxWithConstraints: al minimizar la barra (iOS 26) el ancho
+    // cambia en cada fotograma y BoxWithConstraints recomponía toda la barra (22 ms por fotograma).
+    // Solo se lee en lambdas de arrastre y dibujo.
+    var widthPx by remember { mutableFloatStateOf(0f) }
+    Box(
+        modifier.onSizeChanged { widthPx = it.width.toFloat() },
         contentAlignment = Alignment.CenterStart
     ) {
         val density = LocalDensity.current
-        val tabWidth = with(density) {
-            (constraints.maxWidth.toFloat() - 8f.dp.toPx()) / tabsCount
-        }
+        val tabWidth: () -> Float = { with(density) { (widthPx - 8f.dp.toPx()) / tabsCount } }
 
         val offsetAnimation = remember { Animatable(0f) }
         val panelOffset by remember(density) {
             derivedStateOf {
-                val fraction = (offsetAnimation.value / constraints.maxWidth).fastCoerceIn(-1f, 1f)
+                val fraction = (offsetAnimation.value / widthPx.coerceAtLeast(1f)).fastCoerceIn(-1f, 1f)
                 with(density) {
                     4f.dp.toPx() * fraction.sign * EaseOut.transform(abs(fraction))
                 }
@@ -131,7 +134,7 @@ fun LiquidBottomTabs(
                 },
                 onDrag = { _, dragAmount ->
                     updateValue(
-                        (targetValue + dragAmount.x / tabWidth * if (isLtr) 1f else -1f)
+                        (targetValue + dragAmount.x / tabWidth() * if (isLtr) 1f else -1f)
                             .fastCoerceIn(0f, (tabsCount - 1).toFloat())
                     )
                     animationScope.launch {
@@ -160,8 +163,8 @@ fun LiquidBottomTabs(
                 animationScope = animationScope,
                 position = { size, offset ->
                     Offset(
-                        if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidth + panelOffset
-                        else size.width - (dampedDragAnimation.value + 0.5f) * tabWidth + panelOffset,
+                        if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidth() + panelOffset
+                        else size.width - (dampedDragAnimation.value + 0.5f) * tabWidth() + panelOffset,
                         size.height / 2f
                     )
                 }
@@ -243,8 +246,8 @@ fun LiquidBottomTabs(
                 .padding(horizontal = 4f.dp)
                 .graphicsLayer {
                     translationX =
-                        if (isLtr) dampedDragAnimation.value * tabWidth + panelOffset
-                        else size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset
+                        if (isLtr) dampedDragAnimation.value * tabWidth() + panelOffset
+                        else size.width - (dampedDragAnimation.value + 1f) * tabWidth() + panelOffset
                     // Minimizada: la pastilla ya es la pestaña activa; la lente desaparece.
                     alpha = 1f - compactProgress()
                 }

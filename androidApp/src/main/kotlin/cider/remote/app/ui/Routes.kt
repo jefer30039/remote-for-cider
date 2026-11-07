@@ -2,6 +2,7 @@ package cider.remote.app.ui
 
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.res.stringResource
 import cider.remote.app.R
 import cider.remote.model.Artwork
@@ -54,3 +55,9 @@ sealed interface Route {
         override fun label(): String = title
     }
 }
+
+/**
+ * Abre una página en la pestaña actual desde cualquier sitio (menús de canción, hoja
+ * de reproducción). Lo da MainScreen; la hoja de reproducción se cierra antes de abrir.
+ */
+val LocalOpenRoute = staticCompositionLocalOf<(Route) -> Unit> { {} }

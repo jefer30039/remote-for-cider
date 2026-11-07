@@ -25,6 +25,7 @@ uniform float brightness;
 uniform half4 tint;         // velo sobre fondos oscuros
 uniform half4 tintLight;    // velo sobre fondos claros
 uniform float2 light;       // dirección hacia la luz (y hacia abajo)
+uniform float2 veil;        // luminancia del fondo entre la que el velo pasa de oscuro a claro
 uniform float rim;          // brillo del contorno
 uniform float rimWidth;
 uniform float rimOpposite;
@@ -94,7 +95,7 @@ half4 main(float2 coord) {
     half fl = luminancia((fondo(m0).rgb + fondo(m0 - cuarto).rgb + fondo(m0 + cuarto).rgb +
                           fondo(m0 + float2(-cuarto.x, cuarto.y)).rgb + fondo(m0 + float2(cuarto.x, -cuarto.y)).rgb) * 0.2);
 
-    half4 velo = mix(tint, tintLight, smoothstep(0.2, 0.65, fl));
+    half4 velo = mix(tint, tintLight, smoothstep(veil.x, veil.y, fl));
     color = mix(color, velo.rgb * muestra.a, velo.a);
 
     float ld = dot(n, light);

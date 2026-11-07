@@ -128,6 +128,10 @@ private fun style(size: Int, leading: Int, weight: FontWeight, tracking: Double 
 private val LocalAppleColors = staticCompositionLocalOf { Light }
 private val LocalAppleType = staticCompositionLocalOf { AppleType() }
 
+/** Paleta oscura pase lo que pase: páginas con fondo de color (álbum, artista), donde el texto va en blanco. */
+@Composable
+fun ForceDark(content: @Composable () -> Unit) = CompositionLocalProvider(LocalAppleColors provides Dark, content = content)
+
 object Apple {
     val colors: AppleColors
         @Composable @ReadOnlyComposable get() = LocalAppleColors.current

@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -44,16 +45,9 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
     var menu by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     Box {
-        if (backdrop != null) {
-            // Flotante sobre el contenido: de vidrio, como las barras.
-            CircleButton(
-                Icons.Outlined.MoreVert, stringResource(R.string.action_more), onClick = { menu = true },
-                modifier = Modifier.shadow(8.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.3f))
-                    .clip(CircleShape).glass(backdrop, style = GlassStyle.button()).glassEdge(CircleShape),
-                background = Color.Transparent, border = null, tint = tint?.invoke() ?: Apple.colors.label,
-            )
-        } else CircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), onClick = { menu = true })
-        DropdownMenu(menu, onDismissRequest = { menu = false }) {
+        GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), onClick = { menu = true },
+            tint = tint?.invoke() ?: Apple.colors.label, backdrop = backdrop ?: LocalGlassBackdrop.current)
+        GlassMenu(menu, { menu = false }) {
             DropdownMenuItem(
                 text = { Text(if (searching) stringResource(R.string.connection_searching) else stringResource(R.string.connection_connected_to, host), color = Apple.colors.secondaryLabel) },
                 leadingIcon = { Icon(Icons.Filled.Link, null) }, onClick = {}, enabled = false,
@@ -69,7 +63,11 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
                 leadingIcon = { Icon(Icons.Filled.Edit, null) },
                 onClick = { menu = false; editing = true },
             )
-            DropdownMenuItem(text = { Text(stringResource(R.string.connection_forget)) }, onClick = { menu = false; onForget() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.connection_forget)) },
+                leadingIcon = { Icon(Icons.Filled.LinkOff, null) },
+                onClick = { menu = false; onForget() },
+            )
         }
     }
     if (editing) HostDialog(host, onDismiss = { editing = false }, onSave = { session.changeHost(it); editing = false })

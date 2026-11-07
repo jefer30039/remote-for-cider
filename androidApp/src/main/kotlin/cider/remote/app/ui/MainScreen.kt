@@ -93,6 +93,8 @@ import cider.remote.app.ui.components.ConnectionMenuButton
 import cider.remote.app.ui.components.glass
 import cider.remote.app.ui.components.GlassBackdrop
 import cider.remote.app.ui.components.glassSource
+import cider.remote.app.ui.components.LocalGlassBackdrop
+import cider.remote.app.ui.components.GlassCircleButton
 import cider.remote.app.ui.components.glassFade
 import cider.remote.app.ui.components.glassEdge
 import cider.remote.app.ui.components.rememberGlassBackdrop
@@ -116,6 +118,8 @@ import cider.remote.app.ui.home.HomeScreen
 import cider.remote.app.ui.library.ArtistScreen
 import cider.remote.app.ui.library.CollectionScreen
 import cider.remote.app.ui.library.LibraryHome
+import androidx.compose.material.icons.outlined.MoreVert
+import cider.remote.app.ui.library.PlayMenu
 import cider.remote.app.ui.library.LibraryList
 import cider.remote.app.ui.player.MiniPlayer
 import cider.remote.app.ui.player.NowPlayingSheet
@@ -181,6 +185,9 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     // Los colores animados se pasan como lambdas y se leen al dibujar: recomponer la barra de
     // Kyant en cada fotograma de la animación rehacía sus RenderEffect (5–10 ms de hilo UI).
     val themeDark = Apple.colors.isDark
+    // Modo oscuro: textos y velo de la barra solo pasan a claro con vidrio casi blanco.
+    sampler.darkBelow = if (themeDark) 0.62f else 0.42f
+    sampler.lightAbove = if (themeDark) 0.75f else 0.5f
     // Cada pieza decide su propio texto: la pastilla puede estar sobre algo claro y el miniplayer sobre algo oscuro.
     val darkMini = sampler.dark["mini"] ?: themeDark
     val darkBar = sampler.dark["barra"] ?: themeDark
@@ -197,6 +204,8 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     PrefetchNowPlaying(remote, state.track)
     val density = androidx.compose.ui.platform.LocalDensity.current
     var rootSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    // Fondo de vidrio para todo lo que cuelga de aquí (también los ⋮ y sus menús, que viven fuera de la página).
+    CompositionLocalProvider(LocalGlassBackdrop provides haze) {
     Box(Modifier.fillMaxSize().background(Apple.colors.background).onSizeChanged { sheet.height = it.height.toFloat(); rootSize = it }) {
       // Con la hoja de reproducción abierta del todo, lo de debajo no se ve: con alfa 0
       // el sistema no lo dibuja (ni la página ni el vidrio), y vuelve en cuanto se arrastra.
@@ -268,7 +277,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             Modifier.fillMaxSize().glassSource(haze)
                 .then(if (pageLayer != null) Modifier.layerBackdrop(pageLayer) else Modifier)
                 .background(Apple.colors.background).nestedScroll(scrollWatch),
-        ) { when (route) {
+        ) { CompositionLocalProvider(LocalOpenRoute provides open, LocalGlassBackdrop provides haze) { when (route) {
             Route.Home -> HomeScreen(remote, connection.endpoint.host, listPadding, open, onForget)
             Route.New -> BrowseScreen(remote, connection.endpoint.host, BrowsePage.New, route.label(), listPadding, open, onForget)
             Route.Radio -> BrowseScreen(remote, connection.endpoint.host, BrowsePage.Radio, route.label(), listPadding, open, onForget)
@@ -276,34 +285,40 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             Route.Search -> SearchScreen(remote, listPadding, open)
             Route.Playlists, Route.Artists, Route.Albums, Route.Songs -> LibraryList(remote, route, listPadding, open)
             is Route.Collection -> CollectionScreen(remote, route, heroPadding)
-            is Route.Artist -> ArtistScreen(remote, route, PaddingValues(top = if (wide) wideTop else top + TopButtonsHeight, bottom = bottom), open)
+            is Route.Artist -> ArtistScreen(remote, connection.endpoint.host, route, heroPadding, open)
             is Route.Category -> CategoryScreen(remote, route, listPadding, open)
-        } }
+        } } }
 
         // Borde de desplazamiento bajo la barra de estado: solo con contenido debajo, como iOS
         // (las páginas de álbum empiezan con su carátula arriba).
         val edge = animateFloatAsState(if (pastEdge) 1f else 0f, label = "borde")
         val edgeVisible by remember { derivedStateOf { edge.value > 0f } }
-        if (route !is Route.Collection && edgeVisible) Box(
+        if (route !is Route.Collection && route !is Route.Artist && edgeVisible) Box(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().height(top + if (wide) 88.dp else 56.dp)
                 .graphicsLayer { alpha = edge.value }.glassFade(haze, Apple.colors.background),
         )
 
         if (nested) {
             // Sobre la página de álbum (fondo de color, siempre oscuro) va translúcido y blanco.
-            val onColor = route is Route.Collection
-            CircleButton(
+            val onColor = route is Route.Collection || route is Route.Artist
+            // De vidrio, como el ⋮ de las raíces; sobre álbum y artista, siempre blanco.
+            GlassCircleButton(
                 Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onClick = back,
                 modifier = Modifier.padding(start = SideMargin, top = top + 13.dp),
-                background = if (onColor) Color.White.copy(alpha = 0.12f) else Apple.colors.circle.copy(alpha = 0.85f),
-                tint = if (onColor) Color.White else Apple.colors.label,
-                border = if (onColor) null else Apple.colors.circleBorder,
+                tint = if (onColor) Color.White else Apple.colors.label, backdrop = haze,
             )
+            // El ⋮ de álbum/playlist también aquí, fuera de la página: un botón de vidrio dentro
+            // de la página dibujaría la página dentro de sí misma (ciclo en HWUI, desbordamiento de pila).
+            if (route is Route.Collection) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin)) {
+                var menu by remember { mutableStateOf(false) }
+                GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true }, tint = Color.White, backdrop = haze)
+                PlayMenu(remote, menu, { menu = false }, route.kind, route.id)
+            }
         }
 
         // Desvanecido del contenido bajo las barras flotantes, en vez de un fondo sólido.
         // En la página de álbum el fondo es siempre oscuro: el desvanecido también.
-        val fade = if (route is Route.Collection) Color.Black.copy(alpha = 0.7f) else Apple.colors.background.copy(alpha = 0.9f)
+        val fade = if (route is Route.Collection || route is Route.Artist) Color.Black.copy(alpha = 0.7f) else Apple.colors.background.copy(alpha = 0.9f)
         Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom)
                 .background(Brush.verticalGradient(0f to Color.Transparent, 0.6f to fade)),
@@ -372,7 +387,11 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
       }
 
         // Deslizar el miniplayer hacia arriba la abre siguiendo al dedo (Apple Music).
-        if (sheet.visible && hasTrack) NowPlayingSheet(remote, state, sheet, initialMode = sheetMode)
+        // Desde la hoja, "ir al álbum/artista" la cierra y abre la página en la pestaña actual.
+        if (sheet.visible && hasTrack) CompositionLocalProvider(LocalOpenRoute provides { r -> sheet.close(); stack.add(r) }, LocalGlassBackdrop provides haze) {
+            NowPlayingSheet(remote, state, sheet, initialMode = sheetMode)
+        }
+    }
     }
 }
 

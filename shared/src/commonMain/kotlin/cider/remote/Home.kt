@@ -43,6 +43,9 @@ data class HomeItem(
     val wideArtwork: Artwork?,
     /** `contentRating == "explicit"`: Apple pone una "E" junto al título. */
     val explicit: Boolean = false,
+    val trackCount: Int? = null,
+    /** Fecha de lanzamiento `AAAA-MM-DD` (álbumes y canciones). */
+    val releaseDate: String? = null,
     /** Portada animada vertical 3:4 (HLS) para las tarjetas grandes del Inicio. */
     val tallVideo: String? = null,
 )
@@ -117,7 +120,7 @@ private fun JsonObject.toBrowseShelf(): HomeShelf? {
     return shelf?.takeIf { it.items.isNotEmpty() }
 }
 
-private fun JsonObject.toHomeItem(preferNotes: Boolean = true): HomeItem? {
+internal fun JsonObject.toHomeItem(preferNotes: Boolean = true): HomeItem? {
     val id = str("id") ?: return null
     val type = str("type") ?: return null
     val a = obj("attributes") ?: return null
@@ -137,13 +140,15 @@ private fun JsonObject.toHomeItem(preferNotes: Boolean = true): HomeItem? {
         tallArtwork = (editorial?.obj("superHeroTall") ?: editorial?.obj("staticDetailTall"))?.toArtwork(),
         wideArtwork = (editorial?.obj("superHeroWide") ?: editorial?.obj("subscriptionHero") ?: editorial?.obj("storeFlowcase"))?.toArtwork(),
         explicit = a.str("contentRating") == "explicit",
+        trackCount = a.str("trackCount")?.toIntOrNull(),
+        releaseDate = a.str("releaseDate"),
         // Para la tarjeta 3:4 Apple usa el vídeo "3x4"; el de detalle (álbum) como reserva.
         tallVideo = a.obj("editorialVideo")?.let { v -> (v.obj("motionTallVideo3x4") ?: v.obj("motionDetailTall"))?.str("video") },
     )
 }
 
 /** Las carátulas editoriales traen ancho/alto a veces como texto: se leen a mano. */
-private fun JsonObject.toArtwork() = Artwork(
+internal fun JsonObject.toArtwork() = Artwork(
     url = str("url"),
     width = str("width")?.toIntOrNull(),
     height = str("height")?.toIntOrNull(),
@@ -152,5 +157,5 @@ private fun JsonObject.toArtwork() = Artwork(
     textColor2 = str("textColor2"),
 )
 
-private fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
-private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.content
+internal fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
+internal fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.content

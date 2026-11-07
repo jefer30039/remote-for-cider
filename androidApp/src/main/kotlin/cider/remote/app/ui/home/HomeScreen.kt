@@ -22,9 +22,15 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import cider.remote.app.ui.components.AnimatedCover
+import cider.remote.app.ui.components.CoverPlayerPool
+import cider.remote.app.ui.components.rememberCoverPlayerPool
 import cider.remote.app.ui.components.asBackground
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -124,7 +130,17 @@ private fun ShelvesScreen(
     val shelves: Result<List<HomeShelf>>? = cached?.let { Result.success(it) } ?: failure?.let { Result.failure(it) }
     // En tablet no hay título grande: las estanterías empiezan bajo la barra superior.
     val showTitle = !wide
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
+    // Reproductores de las portadas animadas, compartidos por toda la pantalla; en pausa
+    // mientras la lista se desplaza y hasta 600 ms después de pararse (cada fotograma de vídeo
+    // obliga a HWUI a importar la textura y redibujar el vidrio: en reposo da igual, al desplazar no).
+    val players = rememberCoverPlayerPool()
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, players) {
+        snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
+            if (scrolling) players.paused = true else { delay(600); players.paused = false }
+        }
+    }
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = contentPadding) {
         if (showTitle) item {
             LargeTitle(title)  // el botón ⋮ flota encima (MainScreen)
         }
@@ -138,14 +154,15 @@ private fun ShelvesScreen(
             }
             list == null -> item { EmptyState(stringResource(R.string.home_load_error), result.exceptionOrNull()?.message) }
             else -> items(list, key = { (it.title ?: "") + it.kind + it.items.first().id }) { shelf ->
-                Shelf(remote, shelf, onOpen)
+                Shelf(remote, shelf, onOpen, players)
             }
         }
     }
 }
 
+/** Estantería de Apple Music (título y fila de portadas); también la usa la página de artista. */
 @Composable
-private fun Shelf(remote: CiderRemote, shelf: HomeShelf, onOpen: (Route) -> Unit) {
+fun Shelf(remote: CiderRemote, shelf: HomeShelf, onOpen: (Route) -> Unit, players: CoverPlayerPool? = null) {
     val scope = rememberCoroutineScope()
     // Estaciones: se reproducen; el resto abre su página.
     val open: (HomeItem) -> Unit = { item ->
@@ -170,7 +187,7 @@ private fun Shelf(remote: CiderRemote, shelf: HomeShelf, onOpen: (Route) -> Unit
                 ) {
                     itemsIndexed(shelf.items, key = { _, it -> it.type + it.id }) { i, item ->
                         val playing by remember(state) { derivedStateOf { state.mostlyVisible(i) } }
-                        HeroCard(item, playing) { open(item) }
+                        HeroCard(item, playing, players) { open(item) }
                     }
                 }
             }
@@ -197,7 +214,8 @@ private fun Shelf(remote: CiderRemote, shelf: HomeShelf, onOpen: (Route) -> Unit
             ShelfKind.Covers -> {
                 // "Artistas favoritos" son estaciones de artista: Apple las pinta en círculo
                 // ("rtist" coincide con "Artistas" y con "Artists").
-                val circles = shelf.items.all { it.type == "stations" } && shelf.title?.contains("rtist") == true
+                val circles = shelf.items.all { it.type == "artists" || it.type == "library-artists" } ||
+                    (shelf.items.all { it.type == "stations" } && shelf.title?.contains("rtist") == true)
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = Margin),
                     horizontalArrangement = Arrangement.spacedBy(Gap),
@@ -209,7 +227,7 @@ private fun Shelf(remote: CiderRemote, shelf: HomeShelf, onOpen: (Route) -> Unit
     }
 }
 
-private fun HomeItem.toRoute(): Route? = when {
+fun HomeItem.toRoute(): Route? = when {
     type.endsWith("albums") || type.endsWith("playlists") ->
         Route.Collection(kind = type, id = id, title = name, subtitle = subtitle.takeIf { type.endsWith("albums") }, artwork = artwork)
     type == "artists" -> Route.Artist(id, name, catalog = true)
@@ -229,7 +247,7 @@ private fun Artwork.color(): Color? = bgColor?.let { runCatching { Color(("ff$it
  * del JSON: en estas imágenes suelen ser casi negros).
  */
 @Composable
-private fun HeroCard(item: HomeItem, playing: Boolean, onClick: () -> Unit) {
+private fun HeroCard(item: HomeItem, playing: Boolean, players: CoverPlayerPool?, onClick: () -> Unit) {
     val tall = item.tallArtwork
     val base = (tall ?: item.artwork)?.color() ?: Color(0xFF2C2C2E)
     val density = LocalDensity.current
@@ -239,7 +257,7 @@ private fun HeroCard(item: HomeItem, playing: Boolean, onClick: () -> Unit) {
             .combinedClickableCompat(onClick = onClick),
     ) {
         if (tall != null) AnimatedCover(
-            item.tallVideo, Modifier.fillMaxSize(), playing = playing,
+            item.tallVideo, Modifier.fillMaxSize(), playing = playing, pool = players,
             maxVideoSize = with(density) { IntSize(HeroWidth.roundToPx(), (HeroWidth * 4 / 3).roundToPx()) },
         ) {
             AsyncImage(
@@ -288,7 +306,7 @@ private fun LazyListState.mostlyVisible(index: Int): Boolean {
 
 /** "E" de contenido explícito, como la de Apple Music junto al título. */
 @Composable
-private fun ExplicitBadge() {
+fun ExplicitBadge() {
     val description = stringResource(R.string.explicit)
     Box(
         Modifier.padding(start = 6.dp).size(15.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.62f))

@@ -16,6 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -30,7 +33,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -57,9 +60,18 @@ val LiquidGlassSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
  */
 @Stable
 class GlassBackdrop internal constructor(internal val layer: GraphicsLayer, internal val haze: HazeState) {
+    /** Posición en pantalla (no en la ventana): los menús emergentes viven en otra ventana. */
     internal var origin by mutableStateOf(Offset.Zero)
     internal var size by mutableStateOf(IntSize.Zero)
 }
+
+/**
+ * El fondo de vidrio de la pantalla, para piezas que no lo reciben por parámetro (menús
+ * emergentes, que viven en otra ventana). **Nunca** usarlo en una pieza que esté dentro del
+ * contenido grabado con [glassSource]: la página se dibujaría dentro de sí misma y HWUI
+ * entra en recursión hasta desbordar la pila (pasó con el ⋮ de la página de álbum).
+ */
+val LocalGlassBackdrop = androidx.compose.runtime.staticCompositionLocalOf<GlassBackdrop?> { null }
 
 @Composable
 fun rememberGlassBackdrop(): GlassBackdrop {
@@ -79,7 +91,7 @@ fun rememberGlassBackdrop(): GlassBackdrop {
 fun Modifier.glassSource(backdrop: GlassBackdrop): Modifier {
     if (!LiquidGlassSupported) return hazeSource(backdrop.haze)
     return this.then(remember(backdrop) {
-        Modifier.onGloballyPositioned { backdrop.origin = it.positionInRoot(); backdrop.size = it.size }
+        Modifier.onGloballyPositioned { backdrop.origin = it.positionOnScreen(); backdrop.size = it.size }
             .drawWithContent {
                 backdrop.layer.record { this@drawWithContent.drawContent() }
                 drawLayer(backdrop.layer)
@@ -103,6 +115,9 @@ data class GlassStyle(
     val tint: Color = Color(0.07f, 0.07f, 0.09f, 0.52f),
     val tintLight: Color = Color(0.07f, 0.07f, 0.09f, 0.6f),
     val lightAngle: Float = -90f,
+    /** Luminancia del fondo a partir de la cual el velo empieza a ser claro, y desde la que lo es del todo. */
+    val veilFrom: Float = 0.2f,
+    val veilTo: Float = 0.65f,
     val rim: Float = 0.35f,
     val rimWidth: Dp = 1.5.dp,
     val rimOpposite: Float = 0.9f,
@@ -114,6 +129,17 @@ data class GlassStyle(
     companion object {
         @Composable
         fun current(): GlassStyle = if (Apple.colors.isDark) Dark else Light
+
+        /**
+         * Menús emergentes (iOS 27): mucho desenfoque y poco velo, para que se vea el color
+         * de lo que hay debajo; lente suave en el borde.
+         */
+        @Composable
+        fun menu(): GlassStyle = current().copy(
+            blur = 30.dp, saturation = 1.6f, refraction = -1.4f, bezel = 12.dp,
+            tint = if (Apple.colors.isDark) Color(0.09f, 0.09f, 0.11f, 0.34f) else Color(1f, 1f, 1f, 0.42f),
+            tintLight = if (Apple.colors.isDark) Color(0.09f, 0.09f, 0.11f, 0.5f) else Color(1f, 1f, 1f, 0.3f),
+        )
 
         /** Para botones pequeños: la lente de las barras deformaría todo el círculo. */
         @Composable
@@ -135,7 +161,8 @@ data class GlassStyle(
          * oscuro y blanquecino sobre contenido claro, sea cual sea el tema. Sombreado
          * y saturación siguen el tema (tarjetas de my-lglass).
          */
-        val Dark = GlassStyle(tintLight = Color(1f, 1f, 1f, 0.55f))
+        // Modo oscuro: el vidrio sigue oscuro salvo con fondo blanco o casi blanco (petición del usuario).
+        val Dark = GlassStyle(tintLight = Color(1f, 1f, 1f, 0.55f), veilFrom = 0.8f, veilTo = 0.95f)
         val Light = GlassStyle(
             saturation = 1.5f,
             tint = Color(0.07f, 0.07f, 0.09f, 0.52f), tintLight = Color(1f, 1f, 1f, 0.55f),
@@ -162,7 +189,7 @@ fun Modifier.glass(backdrop: GlassBackdrop, corner: Dp = 1000.dp, style: GlassSt
 private fun glassPiece(backdrop: GlassBackdrop, corner: Dp, chosen: GlassStyle, over: GlassBackdrop?, blurred: GraphicsLayer, layer: GraphicsLayer): Modifier {
     val glass = LiquidGlass()
     var position by mutableStateOf(Offset.Zero)
-    return Modifier.onGloballyPositioned { position = it.positionInRoot() }.drawWithContent {
+    return Modifier.onGloballyPositioned { position = it.positionOnScreen() }.drawWithContent {
         val margin = ceil(
             (-chosen.refraction).coerceAtLeast(0f) * chosen.bezel.toPx() * (1 + chosen.dispersion) + chosen.blur.toPx(),
         ) + 2f
@@ -210,6 +237,9 @@ class BackdropSampler internal constructor(private val window: android.view.Wind
     val luminance = mutableStateMapOf<String, Float>()
     /** Verdadero si la zona es oscura (textos en blanco), con histéresis para no parpadear en tonos medios. */
     val dark = mutableStateMapOf<String, Boolean>()
+    /** Umbrales de luminancia del vidrio: por debajo del primero es oscuro, por encima del segundo claro. */
+    var darkBelow = 0.42f
+    var lightAbove = 0.5f
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private var busy = false
     private var pending = false
@@ -217,6 +247,7 @@ class BackdropSampler internal constructor(private val window: android.view.Wind
     private var lastAt = 0L
     private var scheduled = false
 
+    /** Pide una lectura; como mucho una cada [MIN_INTERVAL_MS], con una lectura final pendiente si llegan más. */
     /** Pide una lectura; como mucho una cada [MIN_INTERVAL_MS], con una lectura final pendiente si llegan más. */
     fun request() {
         if (busy) { pending = true; return }
@@ -227,25 +258,39 @@ class BackdropSampler internal constructor(private val window: android.view.Wind
         }
         val w = window ?: return
         val entries = regions.entries.toList().ifEmpty { return }
+        val decor = w.decorView
+        val sw = decor.width; val sh = decor.height
+        if (sw == 0 || sh == 0) return
         busy = true
         lastAt = android.os.SystemClock.uptimeMillis()
-        var left = entries.size
-        for ((key, rect) in entries) {
-            val bitmap = android.graphics.Bitmap.createBitmap(16, 8, android.graphics.Bitmap.Config.ARGB_8888)
-            val src = android.graphics.Rect(rect.left.toInt(), rect.top.toInt(), rect.right.toInt(), rect.bottom.toInt())
-            runCatching {
-                android.view.PixelCopy.request(w, src, bitmap, { result ->
-                    if (result == android.view.PixelCopy.SUCCESS) {
-                        val lum = meanLuminance(bitmap)
+        // Una sola copia de toda la ventana, reducida (~26 px por píxel): cada copia retiene el
+        // RenderThread 3–8 ms (sube la superficie entera como textura), así que una en vez de una por zona.
+        val bw = 48; val bh = (bw.toLong() * sh / sw).toInt().coerceAtLeast(1)
+        val bitmap = android.graphics.Bitmap.createBitmap(bw, bh, android.graphics.Bitmap.Config.ARGB_8888)
+        runCatching {
+            android.view.PixelCopy.request(w, bitmap, { result ->
+                if (result == android.view.PixelCopy.SUCCESS) {
+                    val px = IntArray(bw * bh)
+                    bitmap.getPixels(px, 0, bw, 0, 0, bw, bh)
+                    for ((key, rect) in entries) {
+                        val x0 = (rect.left * bw / sw).toInt().coerceIn(0, bw - 1)
+                        val x1 = (rect.right * bw / sw).toInt().coerceIn(x0 + 1, bw)
+                        val y0 = (rect.top * bh / sh).toInt().coerceIn(0, bh - 1)
+                        val y1 = (rect.bottom * bh / sh).toInt().coerceIn(y0 + 1, bh)
+                        var sum = 0.0
+                        for (y in y0 until y1) for (x in x0 until x1) {
+                            val c = px[y * bw + x]
+                            sum += (0.2126 * ((c shr 16) and 0xFF) + 0.7152 * ((c shr 8) and 0xFF) + 0.0722 * (c and 0xFF)) / 255.0
+                        }
+                        val lum = (sum / ((x1 - x0) * (y1 - y0))).toFloat()
                         luminance[key] = lum
-                        // Banda muerta estrecha: texto negro sobre vidrio de 0,35–0,42 no se leía.
-                        val tone = when { lum < 0.42f -> true; lum > 0.5f -> false; else -> dark[key] }
+                        val tone = when { lum < darkBelow -> true; lum > lightAbove -> false; else -> dark[key] }
                         if (tone != null && tone != dark[key]) dark[key] = tone
                     }
-                    if (--left == 0) done()
-                }, handler)
-            }.onFailure { if (--left == 0) done() }
-        }
+                }
+                done()
+            }, handler)
+        }.onFailure { done() }
     }
 
     private fun done() {
@@ -253,16 +298,9 @@ class BackdropSampler internal constructor(private val window: android.view.Wind
         if (pending) { pending = false; request() }
     }
 
-    // Cada copia retiene el RenderThread 5–10 ms: a 9 por segundo se notaban tirones; a 2,5 no.
+    // Cada copia retiene el RenderThread 3–8 ms: a 9 por segundo se notaban tirones; a 2,5 no.
     private companion object { const val MIN_INTERVAL_MS = 400L }
 
-    private fun meanLuminance(bitmap: android.graphics.Bitmap): Float {
-        val px = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(px, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        var sum = 0.0
-        for (c in px) sum += (0.2126 * ((c shr 16) and 0xFF) + 0.7152 * ((c shr 8) and 0xFF) + 0.0722 * (c and 0xFF)) / 255.0
-        return (sum / px.size).toFloat()
-    }
 }
 
 @Composable
@@ -310,6 +348,7 @@ private class LiquidGlass {
             sh.setFloatUniform("tintLight", s.tintLight.red, s.tintLight.green, s.tintLight.blue, s.tintLight.alpha)
             val a = Math.toRadians(s.lightAngle.toDouble())
             sh.setFloatUniform("light", cos(a).toFloat(), sin(a).toFloat())
+            sh.setFloatUniform("veil", s.veilFrom, s.veilTo)
             sh.setFloatUniform("rim", s.rim)
             sh.setFloatUniform("rimWidth", s.rimWidth.toPx())
             sh.setFloatUniform("rimOpposite", s.rimOpposite)
@@ -396,7 +435,7 @@ private fun glassFadePiece(
     var position by mutableStateOf(Offset.Zero)
     val softMask = fadeOut(Color.Black, 1f, from = 0.2f, to = 1f)
     val strongMask = fadeOut(Color.Black, 1f, from = 0f, to = 0.85f)
-    return Modifier.onGloballyPositioned { position = it.positionInRoot() }.drawWithContent {
+    return Modifier.onGloballyPositioned { position = it.positionOnScreen() }.drawWithContent {
         val area = IntSize(size.width.toInt(), size.height.toInt())
         val shift = position - backdrop.origin
         // Cada desenfoque con su máscara: el suave llega más abajo que el fuerte.
@@ -436,3 +475,28 @@ private fun fadeOut(color: Color, alpha: Float, from: Float, to: Float, steps: I
 
 private fun blurEffect(px: Float) =
     android.graphics.RenderEffect.createBlurEffect(px, px, Shader.TileMode.CLAMP).asComposeRenderEffect()
+
+/**
+ * Botón circular de vidrio de 40 dp para las cabeceras (volver, ⋮): el mismo en todas
+ * las pantallas. Sin fondo de vidrio disponible (o antes de Android 13), círculo del tema.
+ */
+@Composable
+fun GlassCircleButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Apple.colors.label,
+    backdrop: GlassBackdrop? = LocalGlassBackdrop.current,
+) {
+    if (backdrop == null) {
+        CircleButton(icon, contentDescription, onClick, modifier, background = Apple.colors.circle.copy(alpha = 0.85f), tint = tint)
+        return
+    }
+    CircleButton(
+        icon, contentDescription, onClick,
+        modifier = modifier.shadow(8.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.3f))
+            .clip(CircleShape).glass(backdrop, style = GlassStyle.button()).glassEdge(CircleShape),
+        background = Color.Transparent, border = null, tint = tint,
+    )
+}

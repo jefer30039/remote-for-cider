@@ -1,5 +1,10 @@
 package cider.remote.app.ui.player
 
+import cider.remote.HomeItem
+import cider.remote.SongLinks
+import cider.remote.app.ui.LocalOpenRoute
+import cider.remote.app.ui.home.toRoute
+import cider.remote.songLinks
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.WindowInsets
@@ -326,20 +331,38 @@ private fun CompactHeader(remote: CiderRemote, state: PlayerState, dragModifier:
         Modifier.fillMaxWidth().then(dragModifier).padding(start = 28.dp, end = 18.dp, top = 30.dp, bottom = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val (toAlbum, toArtist) = rememberSongNavigation(remote, state)
         ArtworkImage(track?.artwork, 70.dp, shape = RoundedCornerShape(6.dp))
         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-            TitleText(state, Apple.type.headline.copy(fontSize = 18.sp))
-            Text(track?.artistName.orEmpty(), style = Apple.type.body, color = Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            TitleText(state, Apple.type.headline.copy(fontSize = 18.sp), Modifier.combinedClickableCompat(onClick = toAlbum))
+            Text(track?.artistName.orEmpty(), style = Apple.type.body, color = Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.combinedClickableCompat(onClick = toArtist))
         }
         MoreMenu(remote, state)
     }
 }
 
+/**
+ * Tocar el título abre el álbum de la canción actual y tocar el artista, su página
+ * (consulta de Apple Music con `include=albums,artists`; la hoja se cierra al abrir).
+ */
+@Composable
+private fun rememberSongNavigation(remote: CiderRemote, state: PlayerState): Pair<() -> Unit, () -> Unit> {
+    val open = LocalOpenRoute.current
+    val scope = rememberCoroutineScope()
+    val id = state.track?.playParams?.id
+    fun go(pick: (SongLinks) -> HomeItem?) {
+        id ?: return
+        scope.launch { runCatching { remote.api.songLinks(id) }.getOrNull()?.let(pick)?.toRoute()?.let(open) }
+    }
+    return Pair({ go { it.album } }, { go { it.artist } })
+}
+
 /** Título con la "E" de contenido explícito detrás, como Apple Music. */
 @Composable
-private fun TitleText(state: PlayerState, style: androidx.compose.ui.text.TextStyle) {
+private fun TitleText(state: PlayerState, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
     val track = state.track
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(
             track?.name ?: stringResource(R.string.status_not_playing), style = style,
             color = Primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
@@ -359,13 +382,15 @@ private fun TitleText(state: PlayerState, style: androidx.compose.ui.text.TextSt
 
 @Composable
 private fun TitleRow(remote: CiderRemote, state: PlayerState, compact: Boolean = false) {
+    val (toAlbum, toArtist) = rememberSongNavigation(remote, state)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             val size = if (compact) 17.sp else 22.sp
-            TitleText(state, Apple.type.title2.copy(fontSize = size, lineHeight = size * 1.2f, fontWeight = FontWeight.SemiBold))
+            TitleText(state, Apple.type.title2.copy(fontSize = size, lineHeight = size * 1.2f, fontWeight = FontWeight.SemiBold), Modifier.combinedClickableCompat(onClick = toAlbum))
             Text(
                 state.track?.artistName.orEmpty(), style = Apple.type.title3.copy(fontSize = size, lineHeight = size * 1.2f, fontWeight = FontWeight.Normal),
                 color = Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.combinedClickableCompat(onClick = toArtist),
             )
         }
         MoreMenu(remote, state)

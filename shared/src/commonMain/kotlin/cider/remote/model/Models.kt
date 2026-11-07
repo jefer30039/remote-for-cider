@@ -32,6 +32,10 @@ data class Artwork(
         ?.replace("{w}", w.toString())?.replace("{h}", h.toString())?.replace("{f}", "jpg")
         ?.replace(SIZE_REGEX, "/${w}x${h}$1")
 
+    /** PNG con transparencia (logos editoriales); `sized` pide JPG y perdería el fondo. */
+    fun png(w: Int, h: Int): String? = url
+        ?.replace("{w}", w.toString())?.replace("{h}", h.toString())?.replace("{f}", "png")
+
     /** Recorte de w × h que elige el servidor de Apple (`sr`): para carátulas editoriales panorámicas. */
     fun cropped(w: Int, h: Int): String? = url
         ?.replace("bb.{f}", "sr.{f}")?.replace("{c}", "sr")

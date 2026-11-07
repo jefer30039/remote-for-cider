@@ -5,6 +5,7 @@ import cider.remote.CiderEndpoint
 import cider.remote.CiderEvents
 import cider.remote.ciderHttpClient
 import cider.remote.BrowsePage
+import cider.remote.artistPage
 import cider.remote.browse
 import cider.remote.home
 import kotlinx.coroutines.flow.take
@@ -19,6 +20,7 @@ import java.io.File
  *   letra [silabas]   resumen de la letra actual
  *   eventos [n]       imprime n eventos del socket (por defecto 20)
  *   nuevo | radio     estanterías de esas pestañas de Apple Music
+ *   artista <id>      página de un artista del catálogo
  * Host: variable CIDER_HOST (por defecto 127.0.0.1).
  */
 fun main(args: Array<String>) = runBlocking {
@@ -38,6 +40,14 @@ fun main(args: Array<String>) = runBlocking {
                 val t = it.track.attributes
                 println("  $i ${t?.name} — ${t?.artistName}")
             }
+        }
+        "artista" -> {
+            val p = api.artistPage(args.getOrElse(1) { "1031397873" })
+            println("${p.name} | logo=${p.logo != null} heroTall=${p.heroTall != null} heroWide=${p.heroWide != null} géneros=${p.genres}")
+            println("origen=${p.origin} nacimiento=${p.bornOrFormed} bio=${p.bio?.take(80)}")
+            println("último: ${p.latest?.name} (${p.latest?.type}) ${p.latest?.subtitle}")
+            println("${p.topSongsTitle}: " + p.topSongs.take(3).joinToString { "${it.name} [${it.subtitle}]${if (it.explicit) " E" else ""}" })
+            p.shelves.forEach { println("  ${it.title} (${it.items.size}): " + it.items.take(3).joinToString { "${it.type}:${it.name}" }) }
         }
         "nuevo", "radio" -> {
             api.browse(if (args[0] == "nuevo") BrowsePage.New else BrowsePage.Radio).forEach { shelf ->

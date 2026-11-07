@@ -126,4 +126,19 @@
     <string name="search_no_results">Sin resultados</string>
     <string name="search_try_other">Prueba con otras palabras.</string>
     <string name="explicit">Explícito</string>
+    <string name="artist_about">Acerca de</string>
+    <string name="artist_origin">Origen</string>
+    <string name="artist_born">Nacimiento / formación</string>
+    <string name="artist_info">Sobre el artista</string>
+    <string name="action_see_all">Ver todo</string>
+    <string name="action_show_less">Mostrar menos</string>
+    <string name="artist_load_error">No se pudo cargar el artista</string>
+    <string name="label_genre">Género</string>
+    <string name="action_share">Compartir</string>
+    <string name="action_add_to_playlist">Añadir a playlist</string>
+    <string name="action_go_to_album">Ir al álbum</string>
+    <string name="action_go_to_artist">Ir al artista</string>
+    <string name="playlist_added">Añadida a %1$s</string>
+    <string name="playlist_add_failed">No se pudo añadir a la playlist</string>
+    <string name="playlists_none_editable">No hay playlists editables</string>
 </resources>
