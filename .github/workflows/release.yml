@@ -22,8 +22,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
-
+      # El runner de GitHub ya trae el SDK de Android (ANDROID_HOME); AGP descarga lo que falte.
       - name: Check signing secrets
         id: signing
         env:
