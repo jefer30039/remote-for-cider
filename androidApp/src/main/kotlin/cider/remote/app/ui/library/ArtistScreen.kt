@@ -1,5 +1,7 @@
 package cider.remote.app.ui.library
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -123,6 +125,8 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
     val bg = (hero?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() } ?: Color(0xFF2C2C2E)).pageBackground(dark = androidx.compose.foundation.isSystemInDarkTheme())
     val pageBackground = cider.remote.app.ui.LocalPageBackground.current
     androidx.compose.runtime.SideEffect { pageBackground.value = bg }
+    // El color de la imagen editorial llega con la página: se funde en vez de saltar (leído al dibujar).
+    val bgShown = androidx.compose.animation.animateColorAsState(bg, androidx.compose.animation.core.tween(350), label = "fondoArtista")
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { pageBackground.value = null } }
     var showInfo by remember { mutableStateOf(false) }
 
@@ -143,10 +147,12 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
 
     LightStatusBarIcons()
     ForceDark {
-        Box(Modifier.fillMaxSize().background(bg)) {
+        Box(Modifier.fillMaxSize()) {
+            // Fondo en su propia capa (ver CollectionScreen): el fundido no regraba la página.
+            Box(Modifier.matchParentSize().graphicsLayer().drawBehind { drawRect(bgShown.value) })
             LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
                 item {
-                    Hero(page, fallbackName, bg, wide, onPlay = { play(false) }, onShuffle = { play(true) }, onInfo = { showInfo = true })
+                    Hero(page, fallbackName, bgShown, wide, onPlay = { play(false) }, onShuffle = { play(true) }, onInfo = { showInfo = true })
                 }
                 val p = page
                 when {
@@ -177,7 +183,7 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
  * sobre el borde inferior, con info y aleatorio a 76 dp de su centro (Apple Music).
  */
 @Composable
-private fun Hero(page: ArtistPage?, fallbackName: String, bg: Color, wide: Boolean, onPlay: () -> Unit, onShuffle: () -> Unit, onInfo: () -> Unit) {
+private fun Hero(page: ArtistPage?, fallbackName: String, bg: androidx.compose.runtime.State<Color>, wide: Boolean, onPlay: () -> Unit, onShuffle: () -> Unit, onInfo: () -> Unit) {
     val hero = page?.let { if (wide) it.heroWide ?: it.heroTall else it.heroTall ?: it.heroWide }
     val ratio = if (wide) 2.2f else 1f / 1.08f
     Box(Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
@@ -187,7 +193,7 @@ private fun Hero(page: ArtistPage?, fallbackName: String, bg: Color, wide: Boole
                 model = model ?: page?.artwork?.sized(1200), contentDescription = null, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-            Box(Modifier.fillMaxSize().background(cider.remote.app.ui.components.fadeInto(bg, from = 0.4f)))
+            Box(Modifier.fillMaxSize().graphicsLayer().drawBehind { drawRect(cider.remote.app.ui.components.fadeInto(bg.value, from = 0.4f)) })
             // Logo editorial (PNG con transparencia); si no hay, el nombre en grande.
             val logo = page?.logo
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp).fillMaxWidth(if (wide) 0.4f else 0.72f).height(72.dp)) {

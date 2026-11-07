@@ -1,5 +1,7 @@
 package cider.remote.app.ui.library
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.res.pluralStringResource
 import cider.remote.app.R
 import androidx.compose.ui.res.stringResource
@@ -248,10 +250,22 @@ private fun LazyGridScope.fullWidth(content: @Composable () -> Unit) =
 
 @Composable
 fun Loading() {
+    // Solo si la carga tarda: un indicador girando obliga a repintar el vidrio en cada fotograma
+    // (también durante la transición de entrada) y en cargas rápidas solo parpadea.
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(600); show = true }
     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = Apple.colors.secondaryLabel, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+        if (show) CircularProgressIndicator(color = Apple.colors.secondaryLabel, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+        else Spacer(Modifier.size(24.dp))
     }
 }
+
+/**
+ * Canciones de los álbumes y playlists abiertos hace poco: al volver a abrir uno, la lista está
+ * desde el primer fotograma (que se compone antes de que la página empiece a moverse) y se
+ * refresca detrás.
+ */
+private val recentTracks = android.util.LruCache<String, List<TrackRow>>(24)
 
 /** Celda de cuadrícula: carátula y textos debajo. Esquinas de 6 dp, como Apple Music. */
 @Composable
@@ -595,8 +609,12 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
     val toArtist: (() -> Unit)? = if (route.isPlaylist) null else ({
         scope.launch { runCatching { remote.api.albumArtist(route.kind, route.id) }.getOrNull()?.toRoute()?.let(openRoute) }
     })
-    val tracks by produceState<Result<List<TrackRow>>?>(null, route) {
-        value = runCatching { remote.api.tracks(route) }
+    val tracksKey = "${route.kind}/${route.id}"
+    val tracks by produceState<Result<List<TrackRow>>?>(recentTracks.get(tracksKey)?.let { Result.success(it) }, route) {
+        val fresh = runCatching { remote.api.tracks(route) }
+        fresh.getOrNull()?.let { recentTracks.put(tracksKey, it) }
+        // Si ya había lista y la consulta falla, se queda la que había.
+        if (fresh.isSuccess || value == null) value = fresh
     }
     val cover by produceState<AnimatedCover?>(null, route) {
         value = runCatching { remote.api.animatedCover(route.kind, route.id) }.getOrNull()
@@ -607,6 +625,9 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
     val pageBackground = cider.remote.app.ui.LocalPageBackground.current
     androidx.compose.runtime.SideEffect { pageBackground.value = bg }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { pageBackground.value = null } }
+    // Si el color llega cuando la página ya se ve (se calcula de la carátula), se funde en vez
+    // de saltar. Se lee al dibujar: la página no se recompone en cada fotograma del fundido.
+    val bgShown = androidx.compose.animation.animateColorAsState(bg, androidx.compose.animation.core.tween(350), label = "fondoAlbum")
     val wideScreen = wide
     // En tablet la portada va en tarjeta (vídeo cuadrado); el vertical a todo el ancho sería enorme.
     val tall = cover?.tall?.takeUnless { wideScreen }
@@ -629,7 +650,10 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
         }
     }
     LightStatusBarIcons()
-    Box(Modifier.fillMaxSize().background(bg)) {
+    Box(Modifier.fillMaxSize()) {
+        // Fondo en su propia capa: el fundido de color solo vuelve a pintar esta capa; dibujado
+        // detrás de la lista obligaba a volver a grabar la página entera en cada fotograma.
+        Box(Modifier.matchParentSize().graphicsLayer().drawBehind { drawRect(bgShown.value) })
         LazyVerticalGrid(columns = GridCells.Fixed(1), contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             fullWidth {
                 if (wideScreen) WideCollectionHeader(
@@ -647,7 +671,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                                     contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                                 )
                             }
-                            Box(Modifier.fillMaxSize().background(fadeInto(bg)))
+                            Box(Modifier.fillMaxSize().graphicsLayer().drawBehind { drawRect(fadeInto(bgShown.value)) })
                         }
                     } else {
                         // Sin vídeo: tarjeta de 257 dp centrada, a 125 dp del borde superior.

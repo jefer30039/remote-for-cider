@@ -19,6 +19,15 @@ import cider.remote.app.R
 import androidx.compose.ui.res.stringResource
 import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.runtime.key
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -129,7 +138,7 @@ import cider.remote.app.ui.player.sheetDrag
 import cider.remote.app.ui.search.CategoryScreen
 import cider.remote.app.ui.search.SearchScreen
 
-private enum class Tab(@StringRes val label: Int, val icon: ImageVector, val root: Route) {
+internal enum class Tab(@StringRes val label: Int, val icon: ImageVector, val root: Route) {
     Home(R.string.tab_home, AppleIcons.TabHome, Route.Home),
     New(R.string.tab_new, AppleIcons.TabNew, Route.New),
     Radio(R.string.tab_radio, AppleIcons.TabRadio, Route.Radio),
@@ -157,20 +166,28 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     var sheetMode by rememberSaveable { mutableStateOf(SheetMode.Artwork) }
     var sidebar by rememberSaveable { mutableStateOf(false) }
     val stack = stacks.getValue(tab)
-    val back: () -> Unit = { stack.removeAt(stack.lastIndex) }
+    // Transiciones de iOS entre páginas y estado guardado de cada una (al volver, la lista sigue donde estaba).
+    val saveable = rememberSaveableStateHolder()
+    val navScope = rememberCoroutineScope()
+    val pages = remember { PageStack(navScope, stacks, saveable) { tab } }
+    val pagesSettled = remember { derivedStateOf { pages.transition == null } }
+    val back: () -> Unit = { pages.pop() }
     // Volver a tocar la pestaña activa vuelve a su raíz; ya en la raíz, desplaza al inicio.
     val scrollToTop = remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val select: (Tab) -> Unit = { selected ->
         if (selected == tab) {
-            val s = stacks.getValue(tab)
-            if (s.size > 1) while (s.size > 1) s.removeAt(s.lastIndex) else scrollToTop.intValue++
-        }
+            if (stacks.getValue(tab).size > 1) pages.popToRoot() else scrollToTop.intValue++
+        } else pages.settle()
         tab = selected
     }
     val openSheet: (SheetMode) -> Unit = { sheetMode = it; sheet.open() }
 
     BackHandler(enabled = sidebar) { sidebar = false }
-    BackHandler(enabled = !sheet.isOpen && !sidebar && stack.size > 1, onBack = back)
+    var rootSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    // Atrás predictivo: la página sigue al dedo, como el deslizamiento desde el borde de iOS.
+    PredictiveBackHandler(enabled = !sheet.isOpen && !sidebar && stack.size > 1) { events ->
+        pages.predictiveBack(events, rootSize.width.toFloat())
+    }
 
     val hasTrack = state.track != null
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -184,8 +201,6 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
 
     val haze = rememberGlassBackdrop()
     val sampler = rememberBackdropSampler()
-    // Fondo de la página de color actual (álbum, artista), que esas páginas publican.
-    val pageBackground = remember { mutableStateOf<Color?>(null) }
     // Textos e iconos de las piezas de vidrio: blancos sobre contenido oscuro, negros sobre claro
     // (iOS 26), con histéresis para no parpadear en tonos medios.
     // Los colores animados se pasan como lambdas y se leen al dibujar: recomponer la barra de
@@ -214,7 +229,6 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     val pageBackdrop: Backdrop = pageLayer ?: rememberSharedBackdrop(haze)
     PrefetchNowPlaying(remote, state.track)
     val density = androidx.compose.ui.platform.LocalDensity.current
-    var rootSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     // Fondo de vidrio para todo lo que cuelga de aquí (también los ⋮ y sus menús, que viven fuera de la página).
     CompositionLocalProvider(LocalGlassBackdrop provides haze) {
     Box(Modifier.fillMaxSize().background(Apple.colors.background).onSizeChanged { sheet.height = it.height.toFloat(); rootSize = it }) {
@@ -224,21 +238,31 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
       val pageHidden = remember { derivedStateOf { sheet.position.value <= 0f } }
       CompositionLocalProvider(LocalPageHidden provides pageHidden) {
       Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (sheet.position.value <= 0f) 0f else 1f }) {
-        val route = stack.last()
-        val nested = stack.size > 1
-        val open: (Route) -> Unit = { stack.add(it) }
+        val topEntry = pages.top(tab)
+        val route = topEntry.route
+        val nested = topEntry.nested
+        val transition = pages.transition
+        val open: (Route) -> Unit = { pages.push(it) }
         // Las páginas con portada (álbum, artista) dibujan bajo la barra de estado.
-        val listPadding = PaddingValues(top = if (wide) wideTop else top + if (nested) TopButtonsHeight else 0.dp, bottom = bottom)
+        fun listPadding(nested: Boolean) = PaddingValues(top = if (wide) wideTop else top + if (nested) TopButtonsHeight else 0.dp, bottom = bottom)
         val heroPadding = PaddingValues(bottom = bottom)
+        // Opacidad de lo que depende de la página (botones de cabecera) durante una transición:
+        // se funde con el mismo progreso con que se desliza la página.
+        fun shownFor(test: (PageEntry) -> Boolean): () -> Float = {
+            val t = pages.transition
+            if (t == null) (if (test(pages.top(tab))) 1f else 0f)
+            else lerp(if (test(t.under)) 1f else 0f, if (test(t.over)) 1f else 0f, t.progress.value.coerceIn(0f, 1f))
+        }
+        fun anyShows(test: (PageEntry) -> Boolean) = test(topEntry) || (transition != null && (test(transition.over) || test(transition.under)))
         // El fondo va dentro de la fuente: el vidrio tiene que ver algo opaco detrás.
         // Cuánto se ha desplazado la pantalla actual (para el borde de arriba). Solo se
         // lee en composición si pasa el umbral (derivedStateOf): leer el valor directo
         // recomponía toda la pantalla en cada píxel de desplazamiento.
-        val scrolled = remember(route) { mutableFloatStateOf(0f) }
-        val pastEdge by remember(route) { derivedStateOf { scrolled.floatValue > 4f } }
+        val scrolled = pages.scrolledOf(topEntry.key)
+        val pastEdge by remember(topEntry.key) { derivedStateOf { scrolled.floatValue > 4f } }
         // Barra minimizada (iOS 26): al desplazar hacia abajo se encoge; al subir o al llegar arriba, vuelve.
         val compactState = remember(route) { mutableStateOf(false) }
-        val scrollWatch = remember(route) {
+        val scrollWatch = remember(topEntry.key) {
             object : NestedScrollConnection {
                 override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                     scrolled.floatValue = (scrolled.floatValue - consumed.y).coerceAtLeast(0f)
@@ -285,57 +309,144 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             Modifier.fillMaxSize().glassSource(haze)
                 .then(if (pageLayer != null) Modifier.layerBackdrop(pageLayer) else Modifier)
                 .background(Apple.colors.background).nestedScroll(scrollWatch),
-        ) { CompositionLocalProvider(LocalOpenRoute provides open, LocalGlassBackdrop provides haze, LocalScrollToTop provides scrollToTop, cider.remote.app.ui.LocalPageBackground provides pageBackground) { when (route) {
-            Route.Home -> HomeScreen(remote, connection.endpoint.host, listPadding, open, onForget)
-            Route.New -> BrowseScreen(remote, connection.endpoint.host, BrowsePage.New, route.label(), listPadding, open, onForget)
-            Route.Radio -> BrowseScreen(remote, connection.endpoint.host, BrowsePage.Radio, route.label(), listPadding, open, onForget)
-            Route.LibraryHome -> LibraryHome(remote, connection.endpoint.host, listPadding, open, onForget)
-            Route.Search -> SearchScreen(remote, listPadding, open)
-            Route.Playlists, Route.Artists, Route.Albums, Route.Songs -> LibraryList(remote, route, listPadding, open)
-            is Route.Collection -> CollectionScreen(remote, route, heroPadding)
-            is Route.Artist -> ArtistScreen(remote, connection.endpoint.host, route, heroPadding, open)
-            is Route.Category -> CategoryScreen(remote, route, listPadding, open)
-        } } }
+        ) { CompositionLocalProvider(LocalOpenRoute provides open, LocalGlassBackdrop provides haze, LocalScrollToTop provides scrollToTop, cider.remote.app.ui.components.LocalPageSettled provides pagesSettled) {
+            // Durante una transición se componen las dos páginas (la de debajo primero). En reposo,
+            // la de arriba y, oculta y sin colocar, la anterior: así no se desmonta al terminar de
+            // abrir (soltar Inicio con sus vídeos costaba ~50 ms) y volver empieza sin componer nada.
+            // `key` conserva cada página al pasar de una lista a otra.
+            val entries = pages.entries(tab)
+            val shown = if (transition != null) listOf(transition.under, transition.over)
+            else listOfNotNull(entries.getOrNull(entries.size - 2), topEntry)
+            for (entry in shown) key(entry.key) {
+                val role = when {
+                    transition == null -> if (entry == topEntry) 0 else 2
+                    entry == transition.over -> 1
+                    else -> -1
+                }
+                val progress = transition?.progress
+                // La página se mueve con una propiedad de su capa: la sombra y el oscurecido van en
+                // capas hermanas que solo cambian de opacidad. Dibujarlos alrededor del contenido
+                // obligaba a volver a grabar la página entera en cada fotograma (8–10 ms de hilo UI).
+                Box(
+                    Modifier.fillMaxSize()
+                        .graphicsLayer {
+                            val p = progress?.value?.coerceIn(0f, 1f) ?: 1f
+                            translationX = when (role) {
+                                1 -> size.width * (1f - p)
+                                -1 -> -size.width * PageStack.UnderShift * p
+                                else -> 0f
+                            }
+                            // Oculta: colocada pero transparente (el sistema no la dibuja y conserva
+                            // su grabación: al volver, el primer fotograma no tiene que grabarla entera).
+                            alpha = if (role == 2) 0f else 1f
+                            // La de debajo solo se ve a la izquierda de la que entra: recortada a esa
+                            // franja, el vidrio no repinta la página entera en cada fotograma.
+                            if (role == -1) {
+                                clip = true
+                                shape = UnderPageClip(p)
+                            }
+                        }
+                        .then(
+                            if (role == 2) Modifier.clearAndSetSemantics {}.pointerInput(Unit) {
+                                // Ni toques ni desplazamientos para la oculta.
+                                awaitPointerEventScope {
+                                    while (true) awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.forEach { it.consume() }
+                                }
+                            } else Modifier,
+                        ),
+                ) {
+                    if (role == 1) Box(
+                        // Sombra en el borde izquierdo de la página que entra (iOS).
+                        Modifier.fillMaxHeight().width(14.dp).offset(x = (-14).dp)
+                            .graphicsLayer { alpha = progress?.value?.coerceIn(0f, 1f) ?: 1f }
+                            .background(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.10f)))),
+                    )
+                    Box(Modifier.fillMaxSize().background(Apple.colors.background)) {
+                    saveable.SaveableStateProvider(entry.key) {
+                        CompositionLocalProvider(
+                            cider.remote.app.ui.LocalPageBackground provides pages.colorOf(entry.key),
+                            // La oculta pausa sus portadas animadas.
+                            LocalPageHidden provides if (role == 2) AlwaysHidden else pageHidden,
+                        ) {
+                            val r = entry.route
+                            val pad = listPadding(entry.nested)
+                            when (r) {
+                                Route.Home -> HomeScreen(remote, connection.endpoint.host, pad, open, onForget)
+                                Route.New -> BrowseScreen(remote, connection.endpoint.host, BrowsePage.New, r.label(), pad, open, onForget)
+                                Route.Radio -> BrowseScreen(remote, connection.endpoint.host, BrowsePage.Radio, r.label(), pad, open, onForget)
+                                Route.LibraryHome -> LibraryHome(remote, connection.endpoint.host, pad, open, onForget)
+                                Route.Search -> SearchScreen(remote, pad, open)
+                                Route.Playlists, Route.Artists, Route.Albums, Route.Songs -> LibraryList(remote, r, pad, open)
+                                is Route.Collection -> CollectionScreen(remote, r, heroPadding)
+                                is Route.Artist -> ArtistScreen(remote, connection.endpoint.host, r, heroPadding, open)
+                                is Route.Category -> CategoryScreen(remote, r, pad, open)
+                            }
+                        }
+                    }
+                    }
+                    // La de debajo se oscurece al quedar tapada.
+                    if (role == -1) Box(
+                        Modifier.fillMaxSize()
+                            .graphicsLayer { alpha = PageStack.UnderDim * (progress?.value?.coerceIn(0f, 1f) ?: 1f) }
+                            .background(Color.Black),
+                    )
+                }
+            }
+        } }
 
         // Borde de desplazamiento bajo la barra de estado: solo con contenido debajo, como iOS
         // (las páginas de álbum empiezan con su carátula arriba).
         val edge = animateFloatAsState(if (pastEdge) 1f else 0f, label = "borde")
         val edgeVisible by remember { derivedStateOf { edge.value > 0f } }
         // En todas las pantallas (iOS 26); sobre álbum y artista, con el color de fondo de esa página.
-        val pageColor = pageBackground.value
+        val pageColor = pages.colorOf(topEntry.key).value
         if (edgeVisible) Box(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().height(top + if (wide) 88.dp else 56.dp)
                 .graphicsLayer { alpha = edge.value }.glassFade(haze, pageColor ?: Apple.colors.background),
         )
 
-        if (nested) {
+        if (anyShows { it.nested }) {
             // De vidrio, como el ⋮ de las raíces; el icono sigue el tono de lo que hay detrás
-            // (negro sobre carátulas claras, blanco sobre oscuras).
+            // (negro sobre carátulas claras, blanco sobre oscuras). Se funde al volver a la raíz.
+            val backShown = remember(transition, topEntry) { shownFor { it.nested } }
             GlassCircleButton(
                 Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onClick = back,
-                modifier = Modifier.padding(start = SideMargin, top = top + 13.dp),
+                modifier = Modifier.padding(start = SideMargin, top = top + 13.dp).graphicsLayer { alpha = backShown() },
                 tint = backLabel.value, backdrop = haze,
             )
-            // El ⋮ de álbum/playlist también aquí, fuera de la página: un botón de vidrio dentro
-            // de la página dibujaría la página dentro de sí misma (ciclo en HWUI, desbordamiento de pila).
-            if (route is Route.Collection) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin)) {
-                var menu by remember { mutableStateOf(false) }
-                GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true }, tint = topLabel.value, backdrop = haze)
-                PlayMenu(remote, menu, { menu = false }, route.kind, route.id)
-            }
+        }
+        // El ⋮ de álbum/playlist también aquí, fuera de la página: un botón de vidrio dentro
+        // de la página dibujaría la página dentro de sí misma (ciclo en HWUI, desbordamiento de pila).
+        val menuEntry = listOfNotNull(topEntry, transition?.over, transition?.under).firstOrNull { it.route is Route.Collection }
+        val menuRoute = menuEntry?.route as? Route.Collection
+        if (menuRoute != null) Box(
+            Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin)
+                .graphicsLayer { alpha = shownFor { it.route is Route.Collection }() },
+        ) {
+            var menu by remember { mutableStateOf(false) }
+            GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true }, tint = topLabel.value, backdrop = haze)
+            PlayMenu(remote, menu, { menu = false }, menuRoute.kind, menuRoute.id)
         }
 
         // Desvanecido del contenido bajo las barras flotantes, en vez de un fondo sólido (suave: hasta el 50 % del color de fondo, 40 % negro en álbum y artista).
         // En la página de álbum el fondo es siempre oscuro: el desvanecido también.
         // Suave: el vidrio ya se adapta a lo que tiene detrás; antes llegaba al 90 % a mitad de la franja.
-        val fade = (pageColor ?: Apple.colors.background).copy(alpha = 0.5f)
+        val baseColor = Apple.colors.background
+        val overColor = transition?.let { pages.colorOf(it.over.key) }
+        val underColor = transition?.let { pages.colorOf(it.under.key) }
         Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom)
-                .background(Brush.verticalGradient(0.25f to Color.Transparent, 1f to fade)),
+            // Capa propia: se repinta en cada fotograma de una transición sin arrastrar lo demás.
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom).graphicsLayer().drawBehind {
+                val t = transition
+                val c = if (t == null || overColor == null || underColor == null) pageColor ?: baseColor
+                else androidx.compose.ui.graphics.lerp(underColor.value ?: baseColor, overColor.value ?: baseColor, t.progress.value.coerceIn(0f, 1f))
+                drawRect(Brush.verticalGradient(0.25f to Color.Transparent, 1f to c.copy(alpha = 0.5f)))
+            },
         )
 
         // Teléfono: el ⋮ de las raíces queda fijo arriba a la derecha, a la altura del título grande.
-        if (!wide && !nested && route != Route.Search) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 16.dp, end = SideMargin)) {
+        val rootMenu: (PageEntry) -> Boolean = { !it.nested && it.route != Route.Search }
+        if (!wide && anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 16.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)() }) {
             ConnectionMenuButton(connection.endpoint.host, onForget, backdrop = haze, tint = { topLabel.value })
         }
 
@@ -343,7 +454,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             TopTabBar(tab, haze, onMenu = { sidebar = true }, onSelect = select,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = top + 10.dp))
             // Opciones de conexión arriba a la derecha en las raíces.
-            if (!nested && route != Route.Search) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin)) {
+            if (anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)() }) {
                 ConnectionMenuButton(connection.endpoint.host, onForget, backdrop = haze)
             }
             if (hasTrack) WideMiniPlayer(
@@ -398,7 +509,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
 
         // Deslizar el miniplayer hacia arriba la abre siguiendo al dedo (Apple Music).
         // Desde la hoja, "ir al álbum/artista" la cierra y abre la página en la pestaña actual.
-        if (sheet.visible && hasTrack) CompositionLocalProvider(LocalOpenRoute provides { r -> sheet.close(); stack.add(r) }, LocalGlassBackdrop provides haze) {
+        if (sheet.visible && hasTrack) CompositionLocalProvider(LocalOpenRoute provides { r -> sheet.close(); pages.push(r) }, LocalGlassBackdrop provides haze) {
             NowPlayingSheet(remote, state, sheet, initialMode = sheetMode)
         }
     }
@@ -406,6 +517,22 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
 }
 
 private val WideMiniHeight = 63.dp
+
+private val AlwaysHidden: androidx.compose.runtime.State<Boolean> = androidx.compose.runtime.mutableStateOf(true)
+
+/**
+ * Recorte de la página de debajo durante una transición: la franja visible a la izquierda de
+ * la página que entra, en coordenadas de la propia página (que está desplazada a la izquierda).
+ */
+private class UnderPageClip(private val p: Float) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(size: androidx.compose.ui.geometry.Size, layoutDirection: androidx.compose.ui.unit.LayoutDirection, density: androidx.compose.ui.unit.Density): androidx.compose.ui.graphics.Outline {
+        val shift = size.width * PageStack.UnderShift * p
+        val visible = size.width * (1f - p) + 1f
+        return androidx.compose.ui.graphics.Outline.Rectangle(androidx.compose.ui.geometry.Rect(shift, 0f, (shift + visible).coerceAtMost(size.width), size.height))
+    }
+    override fun equals(other: Any?) = other is UnderPageClip && other.p == p
+    override fun hashCode() = p.hashCode()
+}
 
 /**
  * Barra de pestañas de tablet (Apple Music en iPad/tablet): cápsula arriba en el

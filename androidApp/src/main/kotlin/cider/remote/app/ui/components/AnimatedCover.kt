@@ -37,6 +37,13 @@ import cider.remote.app.R
 val LocalPageHidden = staticCompositionLocalOf<State<Boolean>> { mutableStateOf(false) }
 
 /**
+ * Falso mientras la página entra o sale con la transición de navegación: las portadas animadas
+ * no crean su reproductor hasta que la página está quieta (crear la vista de vídeo y decodificar
+ * en plena transición costaba fotogramas; Apple Music también las arranca al asentarse).
+ */
+val LocalPageSettled = staticCompositionLocalOf<State<Boolean>> { mutableStateOf(true) }
+
+/**
  * [playing]: reproducir ahora (p. ej. solo cuando la tarjeta está a la vista); el
  * reproductor no se crea hasta la primera vez que se pide. [maxVideoSize]: tope de
  * resolución (px) para que ExoPlayer elija una variante HLS acorde al tamaño en pantalla.
@@ -100,8 +107,9 @@ fun AnimatedCover(
     Box(modifier) {
         placeholder()
         if (url == null) return@Box
-        var wanted by remember(url) { mutableStateOf(playing) }
-        LaunchedEffect(playing) { if (playing) wanted = true }
+        val settled by LocalPageSettled.current
+        var wanted by remember(url) { mutableStateOf(playing && settled) }
+        LaunchedEffect(playing, settled) { if (playing && settled) wanted = true }
         if (!wanted) return@Box
         val hidden by LocalPageHidden.current
         val context = LocalContext.current
