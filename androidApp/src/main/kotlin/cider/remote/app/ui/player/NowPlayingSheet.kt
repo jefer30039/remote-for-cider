@@ -7,6 +7,10 @@ import cider.remote.app.ui.home.toRoute
 import cider.remote.songLinks
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import coil3.request.crossfade
+import coil3.request.transformations
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
@@ -161,14 +165,8 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
             .background(Brush.linearGradient(listOf(background.lighter(1.12f), background, background.lighter(0.92f)))),
     ) {
-        // En tablet el fondo es siempre la carátula desenfocada (Apple Music en iPad).
-        if (mode != SheetMode.Artwork || wide) {
-            AsyncImage(
-                model = state.track?.artwork?.sized(SheetBackgroundPx), contentDescription = null, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().blur(90.dp, BlurredEdgeTreatment.Rectangle),
-            )
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (wide) 0.25f else 0.38f)))
-        }
+        // Fondo: la carátula muy desenfocada, oscureciéndose hacia abajo (iOS 26); con letra o cola, más oscuro.
+        SheetBackdrop(state.track?.artwork, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag)
         else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag)
         // Asa para indicar que se puede deslizar hacia abajo.
@@ -177,6 +175,40 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
                 .size(width = 36.dp, height = 5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.45f)),
         )
     }
+}
+
+/**
+ * Carátula minúscula (64 px) suavizada y ampliada con filtro: un desenfoque enorme sin
+ * coste por fotograma (`Modifier.blur(90.dp)` volvía a desenfocar toda la pantalla en cada
+ * fotograma mientras avanzaba el progreso).
+ */
+private object SoftBlur : coil3.transform.Transformation() {
+    override val cacheKey = "hoja-softblur"
+    override suspend fun transform(input: android.graphics.Bitmap, size: coil3.size.Size): android.graphics.Bitmap {
+        val tiny = android.graphics.Bitmap.createScaledBitmap(input, 10, 10, true)
+        return android.graphics.Bitmap.createScaledBitmap(tiny, 80, 80, true)
+    }
+}
+
+/**
+ * Fondo de la hoja como en iOS 26: la carátula desenfocada y algo más saturada, fundida
+ * hacia abajo con el color de fondo de la carátula; [dim] añade un velo negro (letra, cola, tablet).
+ */
+@Composable
+private fun SheetBackdrop(artwork: Artwork?, background: Color, dim: Float) {
+    val context = LocalContext.current
+    val url = artwork?.sized(64)
+    val request = remember(url) {
+        coil3.request.ImageRequest.Builder(context).data(url).transformations(listOf(SoftBlur)).crossfade(600).build()
+    }
+    AsyncImage(
+        model = request, contentDescription = null, contentScale = ContentScale.Crop,
+        filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+        colorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(1.35f) }),
+        modifier = Modifier.fillMaxSize(),
+    )
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.3f to Color.Transparent, 1f to background.copy(alpha = 0.9f))))
+    if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
 }
 
 /**
@@ -217,9 +249,12 @@ private fun PhoneSheet(
                         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().then(dismissDrag).statusBarsPadding()) {
                             if (video == null) {
                                 val side = minOf(width - 48.dp, maxHeight - 44.dp - 34.dp)
+                                // Como iOS: la carátula se encoge al pausar y vuelve con un muelle al reproducir.
+                                val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
                                 ArtworkImage(
                                     state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp)
+                                        .graphicsLayer { scaleX = scale; scaleY = scale }
                                         .shadow(24.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black),
                                 )
                             }
@@ -267,9 +302,11 @@ private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode
             Modifier.width(art).offset { IntOffset((center - art / 2).roundToPx(), 0) }.padding(top = h * 0.07f),
         ) {
             Box(Modifier.then(dismissDrag)) {
+                val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
                 ArtworkImage(
                     state.track?.artwork, art, px = WideSheetArtworkPx, preview = PreviewArtworkPx, shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.shadow(24.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black),
+                    modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+                        .shadow(24.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black),
                 )
             }
             Spacer(Modifier.height(16.dp))
