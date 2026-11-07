@@ -6,6 +6,7 @@ import cider.remote.model.RepeatMode
 import cider.remote.model.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,6 +108,48 @@ class CiderRemote(
     fun stop() {
         job?.cancel()
         job = null
+    }
+
+    private var queueJob: Job? = null
+
+    /**
+     * Reproduce [type]/[id] y encola detrás [following] (pares tipo/id) **en orden**.
+     * Cider responde a add-next/add-later sin esperar al frontend y las inserciones acaban en
+     * cualquier orden (probado: dos add-later seguidos quedaron invertidos), así que se añade
+     * de una en una esperando a que la cola crezca. add-later deja cada canción detrás de las
+     * ya encoladas y por delante de las sugerencias automáticas, así el orden es el natural y
+     * progresivo: si el usuario salta enseguida, ya está la siguiente. Se interrumpe si
+     * mientras tanto se cambia de canción a una ajena a la lista.
+     */
+    fun playThenQueue(type: String, id: String, following: List<Pair<String, String>>) {
+        queueJob?.cancel()
+        queueJob = scope.launch {
+            runCommand { api.playItem(type, id) }
+            // Todo se comprueba leyendo la cola, no now-playing: a los pocos segundos Cider pasa a
+            // informar ahí el id de catálogo de la canción en vez del de biblioteca (i.…), mientras
+            // que los elementos de la cola conservan el id con el que se pidieron.
+            val expected = HashSet<String>().apply { add(id) }
+            suspend fun slice(limit: Int) = runCatching { api.queue(offset = api.queuePosition().position, limit = limit).first.items }.getOrNull()
+            if (!waitFor(3000) { slice(1)?.firstOrNull()?.track?.id == id }) { println("playThenQueue: no empezó $id"); return@launch }
+            for ((index, pair) in following.withIndex()) {
+                val (t, i) = pair
+                val current = slice(1)?.firstOrNull()?.track?.id
+                if (current != null && current !in expected) return@launch  // el usuario puso otra cosa
+                runCatching { api.queueAddLater(t, i) }.getOrElse { println("playThenQueue: add-later falló $it"); return@launch }
+                expected.add(i)
+                // Esperar a verla en la cola (el total crece también con las sugerencias automáticas).
+                if (!waitFor(3000) { slice(index + 3)?.any { it.track.id == i } ?: false }) println("playThenQueue: $i no apareció en la cola")
+            }
+        }
+    }
+
+    private suspend fun waitFor(timeoutMs: Long, condition: suspend () -> Boolean): Boolean {
+        val start = TimeSource.Monotonic.markNow()
+        while (!condition()) {
+            if (start.elapsedNow().inWholeMilliseconds > timeoutMs) return false
+            delay(120)
+        }
+        return true
     }
 
     /** Vuelve a pedir el snapshot completo. */

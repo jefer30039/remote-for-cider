@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -76,6 +77,8 @@ fun LiquidBottomTabs(
     containerColor: (() -> Color)? = null,
     /** Encima de todo, del tamaño de la barra (el icono de la pastilla minimizada). */
     overlay: @Composable BoxScope.() -> Unit = {},
+    /** Toque sin arrastre sobre la lente (la pestaña activa): la lente se traga el clic de la pestaña de debajo. */
+    onCurrentTabTapped: () -> Unit = {},
     content: @Composable RowScope.() -> Unit
 ) {
     // Colores de la app en vez de los fijos del ejemplo.
@@ -112,6 +115,8 @@ fun LiquidBottomTabs(
         var currentIndex by remember(selectedTabIndex) {
             mutableIntStateOf(selectedTabIndex())
         }
+        var dragged = false
+        val tapped by rememberUpdatedState(onCurrentTabTapped)
         val dampedDragAnimation = remember(animationScope) {
             DampedDragAnimation(
                 animationScope = animationScope,
@@ -120,9 +125,10 @@ fun LiquidBottomTabs(
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
                 pressedScale = 78f / 56f,
-                onDragStarted = {},
+                onDragStarted = { dragged = false },
                 onDragStopped = {
                     val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
+                    if (!dragged && targetIndex == currentIndex) tapped()
                     currentIndex = targetIndex
                     animateToValue(targetIndex.toFloat())
                     animationScope.launch {
@@ -133,6 +139,8 @@ fun LiquidBottomTabs(
                     }
                 },
                 onDrag = { _, dragAmount ->
+                    // El inspector llama aquí con desplazamiento cero nada más tocar: solo cuenta el movimiento real.
+                    if (dragAmount != Offset.Zero) dragged = true
                     updateValue(
                         (targetValue + dragAmount.x / tabWidth() * if (isLtr) 1f else -1f)
                             .fastCoerceIn(0f, (tabsCount - 1).toFloat())

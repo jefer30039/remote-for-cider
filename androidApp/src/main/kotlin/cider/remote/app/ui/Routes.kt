@@ -61,3 +61,17 @@ sealed interface Route {
  * de reproducción). Lo da MainScreen; la hoja de reproducción se cierra antes de abrir.
  */
 val LocalOpenRoute = staticCompositionLocalOf<(Route) -> Unit> { {} }
+
+/** Color de fondo de la página de color actual (álbum, artista), para el velo superior y el desvanecido inferior. */
+val LocalPageBackground = staticCompositionLocalOf<androidx.compose.runtime.MutableState<androidx.compose.ui.graphics.Color?>> { androidx.compose.runtime.mutableStateOf(null) }
+
+/** Contador que sube al volver a tocar la pestaña activa ya en su raíz: la pantalla raíz desplaza al inicio. */
+val LocalScrollToTop = staticCompositionLocalOf<androidx.compose.runtime.State<Int>> { androidx.compose.runtime.mutableIntStateOf(0) }
+
+/** Ejecuta [scrollToTop] cada vez que el usuario vuelve a tocar la pestaña activa estando en su raíz. */
+@androidx.compose.runtime.Composable
+fun ScrollToTopEffect(scrollToTop: suspend () -> Unit) {
+    val signal = LocalScrollToTop.current
+    val initial = androidx.compose.runtime.remember { signal.value }
+    androidx.compose.runtime.LaunchedEffect(signal.value) { if (signal.value != initial) scrollToTop() }
+}

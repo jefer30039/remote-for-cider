@@ -113,3 +113,30 @@ private suspend fun extractPalette(context: Context, url: String): List<Color>? 
         Color(android.graphics.Color.HSVToColor(hsv))
     }
 }.getOrNull()
+
+/**
+ * Fondo de las páginas de álbum y artista a partir del color de la carátula, como Apple Music
+ * (medido en "Replay 2026": tono de la carátula, saturación ~0,9, brillo 0,28 en oscuro y
+ * 0,70 en claro). Las carátulas grises siguen grises.
+ */
+fun Color.pageBackground(dark: Boolean): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(toArgb(), hsv)
+    if (hsv[1] > 0.2f) hsv[1] = (hsv[1] * 1.2f).coerceAtMost(0.92f)
+    hsv[2] = if (dark) 0.28f else 0.70f
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+/**
+ * Degradado de [from] (fracción del alto) al borde inferior hacia [color], con curva suave:
+ * el fundido de la portada al fondo de la página, largo y sin escalón (Apple lo extiende por
+ * casi la mitad inferior del vídeo).
+ */
+fun fadeInto(color: Color, from: Float = 0.45f, steps: Int = 12): androidx.compose.ui.graphics.Brush {
+    val stops = Array(steps + 1) { i ->
+        val t = i / steps.toFloat()
+        val eased = t * t * (3 - 2 * t)
+        (from + (1 - from) * t) to color.copy(alpha = eased)
+    }
+    return androidx.compose.ui.graphics.Brush.verticalGradient(*stops)
+}

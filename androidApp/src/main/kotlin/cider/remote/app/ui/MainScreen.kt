@@ -158,9 +158,13 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     var sidebar by rememberSaveable { mutableStateOf(false) }
     val stack = stacks.getValue(tab)
     val back: () -> Unit = { stack.removeAt(stack.lastIndex) }
+    // Volver a tocar la pestaña activa vuelve a su raíz; ya en la raíz, desplaza al inicio.
+    val scrollToTop = remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val select: (Tab) -> Unit = { selected ->
-        // Volver a tocar la pestaña activa vuelve a su raíz.
-        if (selected == tab) stacks.getValue(tab).let { while (it.size > 1) it.removeAt(it.lastIndex) }
+        if (selected == tab) {
+            val s = stacks.getValue(tab)
+            if (s.size > 1) while (s.size > 1) s.removeAt(s.lastIndex) else scrollToTop.intValue++
+        }
         tab = selected
     }
     val openSheet: (SheetMode) -> Unit = { sheetMode = it; sheet.open() }
@@ -180,6 +184,8 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
 
     val haze = rememberGlassBackdrop()
     val sampler = rememberBackdropSampler()
+    // Fondo de la página de color actual (álbum, artista), que esas páginas publican.
+    val pageBackground = remember { mutableStateOf<Color?>(null) }
     // Textos e iconos de las piezas de vidrio: blancos sobre contenido oscuro, negros sobre claro
     // (iOS 26), con histéresis para no parpadear en tonos medios.
     // Los colores animados se pasan como lambdas y se leen al dibujar: recomponer la barra de
@@ -188,10 +194,14 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     // Modo oscuro: textos y velo de la barra solo pasan a claro con vidrio casi blanco.
     sampler.darkBelow = if (themeDark) 0.62f else 0.42f
     sampler.lightAbove = if (themeDark) 0.75f else 0.5f
-    // Cada pieza decide su propio texto: la pastilla puede estar sobre algo claro y el miniplayer sobre algo oscuro.
-    val darkMini = sampler.dark["mini"] ?: themeDark
-    val darkBar = sampler.dark["barra"] ?: themeDark
+    // Un solo tono para todo el grupo inferior (barra o pastilla y miniplayer), decidido sobre la
+    // franja entera: con tonos distintos a la vez se veía raro.
+    val darkBottom = sampler.dark["abajo"] ?: themeDark
+    val darkMini = darkBottom
+    val darkBar = darkBottom
     val darkTop = sampler.dark["arriba"] ?: themeDark
+    val darkBack = sampler.dark["volver"] ?: themeDark
+    val backLabel = animateColorAsState(if (darkBack) Color.White else Color.Black, tween(250), label = "textoVolver")
     val miniLabel = animateColorAsState(if (darkMini) Color.White else Color.Black, tween(250), label = "textoMini")
     val barLabel = animateColorAsState(if (darkBar) Color.White else Color.Black, tween(250), label = "textoBarra")
     val topLabel = animateColorAsState(if (darkTop) Color.White else Color.Black, tween(250), label = "textoArriba")
@@ -256,18 +266,15 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                 val w = rootSize.width.toFloat(); val h = rootSize.height.toFloat()
                 val left = SideMargin.toPx(); val right = w - SideMargin.toPx(); val floor = h - barBottom.toPx()
                 val rect = { l: Float, t: Float, r: Float, b: Float -> androidx.compose.ui.geometry.Rect(l, t, r, b) }
-                val pieces = when {
-                    wide -> mapOf("mini" to rect(left, floor - WideMiniHeight.toPx(), right, floor))
-                    compact -> mapOf(
-                        "barra" to rect(left, floor - CompactBarHeight.toPx(), left + CompactBarHeight.toPx(), floor),
-                        "mini" to rect(left + (CompactBarHeight + BarGap).toPx(), floor - MiniHeight.toPx(), right, floor),
-                    )
-                    else -> mapOf(
-                        "barra" to rect(left, floor - TabBarHeight.toPx(), right, floor),
-                        "mini" to rect(left, floor - (TabBarHeight + BarGap + MiniHeight).toPx(), right, floor - (TabBarHeight + BarGap).toPx()),
-                    )
+                val bandTop = floor - when {
+                    wide -> WideMiniHeight.toPx()
+                    compact -> CompactBarHeight.toPx()
+                    else -> (TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp).toPx()
                 }
-                sampler.regions = pieces + ("arriba" to rect(w - (SideMargin + 40.dp).toPx(), (top + 16.dp).toPx(), w - SideMargin.toPx(), (top + 56.dp).toPx()))
+                val pieces = mapOf("abajo" to rect(left, bandTop, right, floor))
+                sampler.regions = pieces +
+                    ("arriba" to rect(w - (SideMargin + 40.dp).toPx(), (top + 13.dp).toPx(), w - SideMargin.toPx(), (top + 53.dp).toPx())) +
+                    ("volver" to rect(SideMargin.toPx(), (top + 13.dp).toPx(), (SideMargin + 40.dp).toPx(), (top + 53.dp).toPx()))
             }
             delay(450)
             sampler.request()
@@ -278,7 +285,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             Modifier.fillMaxSize().glassSource(haze)
                 .then(if (pageLayer != null) Modifier.layerBackdrop(pageLayer) else Modifier)
                 .background(Apple.colors.background).nestedScroll(scrollWatch),
-        ) { CompositionLocalProvider(LocalOpenRoute provides open, LocalGlassBackdrop provides haze) { when (route) {
+        ) { CompositionLocalProvider(LocalOpenRoute provides open, LocalGlassBackdrop provides haze, LocalScrollToTop provides scrollToTop, cider.remote.app.ui.LocalPageBackground provides pageBackground) { when (route) {
             Route.Home -> HomeScreen(remote, connection.endpoint.host, listPadding, open, onForget)
             Route.New -> BrowseScreen(remote, connection.endpoint.host, BrowsePage.New, route.label(), listPadding, open, onForget)
             Route.Radio -> BrowseScreen(remote, connection.endpoint.host, BrowsePage.Radio, route.label(), listPadding, open, onForget)
@@ -294,25 +301,26 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         // (las páginas de álbum empiezan con su carátula arriba).
         val edge = animateFloatAsState(if (pastEdge) 1f else 0f, label = "borde")
         val edgeVisible by remember { derivedStateOf { edge.value > 0f } }
-        if (route !is Route.Collection && route !is Route.Artist && edgeVisible) Box(
+        // En todas las pantallas (iOS 26); sobre álbum y artista, con el color de fondo de esa página.
+        val pageColor = pageBackground.value
+        if (edgeVisible) Box(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().height(top + if (wide) 88.dp else 56.dp)
-                .graphicsLayer { alpha = edge.value }.glassFade(haze, Apple.colors.background),
+                .graphicsLayer { alpha = edge.value }.glassFade(haze, pageColor ?: Apple.colors.background),
         )
 
         if (nested) {
-            // Sobre la página de álbum (fondo de color, siempre oscuro) va translúcido y blanco.
-            val onColor = route is Route.Collection || route is Route.Artist
-            // De vidrio, como el ⋮ de las raíces; sobre álbum y artista, siempre blanco.
+            // De vidrio, como el ⋮ de las raíces; el icono sigue el tono de lo que hay detrás
+            // (negro sobre carátulas claras, blanco sobre oscuras).
             GlassCircleButton(
                 Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onClick = back,
                 modifier = Modifier.padding(start = SideMargin, top = top + 13.dp),
-                tint = if (onColor) Color.White else Apple.colors.label, backdrop = haze,
+                tint = backLabel.value, backdrop = haze,
             )
             // El ⋮ de álbum/playlist también aquí, fuera de la página: un botón de vidrio dentro
             // de la página dibujaría la página dentro de sí misma (ciclo en HWUI, desbordamiento de pila).
             if (route is Route.Collection) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin)) {
                 var menu by remember { mutableStateOf(false) }
-                GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true }, tint = Color.White, backdrop = haze)
+                GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true }, tint = topLabel.value, backdrop = haze)
                 PlayMenu(remote, menu, { menu = false }, route.kind, route.id)
             }
         }
@@ -320,7 +328,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         // Desvanecido del contenido bajo las barras flotantes, en vez de un fondo sólido (suave: hasta el 50 % del color de fondo, 40 % negro en álbum y artista).
         // En la página de álbum el fondo es siempre oscuro: el desvanecido también.
         // Suave: el vidrio ya se adapta a lo que tiene detrás; antes llegaba al 90 % a mitad de la franja.
-        val fade = if (route is Route.Collection || route is Route.Artist) Color.Black.copy(alpha = 0.4f) else Apple.colors.background.copy(alpha = 0.5f)
+        val fade = (pageColor ?: Apple.colors.background).copy(alpha = 0.5f)
         Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom)
                 .background(Brush.verticalGradient(0.25f to Color.Transparent, 1f to fade)),
@@ -523,6 +531,7 @@ private fun TabBar(
         tabsCount = tabs.size,
         compactProgress = minimize,
         containerColor = container,
+        onCurrentTabTapped = { onSelect(selected) },
         overlay = {
             // Icono de la pastilla: parte del sitio de su pestaña y acaba centrado (en acento, como iOS).
             // Tocar la pastilla vuelve a desplegar la barra.

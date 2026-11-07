@@ -66,6 +66,7 @@ import cider.remote.app.ui.components.EmptyState
 import cider.remote.app.ui.components.LightStatusBarIcons
 import cider.remote.app.ui.components.ListRow
 import cider.remote.app.ui.components.asBackground
+import cider.remote.app.ui.components.pageBackground
 import cider.remote.app.ui.components.combinedClickableCompat
 import cider.remote.app.ui.home.ExplicitBadge
 import cider.remote.app.ui.home.toRoute
@@ -119,7 +120,10 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
     val margin = LocalWindowLayout.current.margin
     val hero = page?.let { if (wide) it.heroWide ?: it.heroTall else it.heroTall ?: it.heroWide } ?: page?.artwork
     // Fondo del color de la imagen editorial, como en los álbumes.
-    val bg = (hero?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() } ?: Color(0xFF2C2C2E)).asBackground()
+    val bg = (hero?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() } ?: Color(0xFF2C2C2E)).pageBackground(dark = androidx.compose.foundation.isSystemInDarkTheme())
+    val pageBackground = cider.remote.app.ui.LocalPageBackground.current
+    androidx.compose.runtime.SideEffect { pageBackground.value = bg }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { pageBackground.value = null } }
     var showInfo by remember { mutableStateOf(false) }
 
     /** Reproduce las canciones top (Apple Music hace lo mismo con "Reproducir"), desde [startAt]. */
@@ -133,14 +137,13 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
             }
             remote.api.setShuffle(shuffle)
             val chosen = songs[startAt.coerceIn(songs.indices)]
-            remote.api.playItem(chosen.type, chosen.id)
-            songs.drop(startAt + 1).take(MaxFollowing).asReversed().forEach { remote.api.queueAddNext(it.type, it.id) }
+            remote.playThenQueue(chosen.type, chosen.id, songs.drop(startAt + 1).take(MaxFollowing).map { it.type to it.id })
         }
     }
 
     LightStatusBarIcons()
     ForceDark {
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to bg.darker(0.6f), 0.4f to bg))) {
+        Box(Modifier.fillMaxSize().background(bg)) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
                 item {
                     Hero(page, fallbackName, bg, wide, onPlay = { play(false) }, onShuffle = { play(true) }, onInfo = { showInfo = true })
@@ -184,7 +187,7 @@ private fun Hero(page: ArtistPage?, fallbackName: String, bg: Color, wide: Boole
                 model = model ?: page?.artwork?.sized(1200), contentDescription = null, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to bg)))
+            Box(Modifier.fillMaxSize().background(cider.remote.app.ui.components.fadeInto(bg, from = 0.4f)))
             // Logo editorial (PNG con transparencia); si no hay, el nombre en grande.
             val logo = page?.logo
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp).fillMaxWidth(if (wide) 0.4f else 0.72f).height(72.dp)) {

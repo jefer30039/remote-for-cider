@@ -68,6 +68,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cider.remote.CiderApi
+import cider.remote.albumArtist
+import cider.remote.app.ui.home.toRoute
 import cider.remote.CiderRemote
 import cider.remote.Page
 import cider.remote.RemoteSignal
@@ -84,6 +86,8 @@ import cider.remote.app.ui.Route
 import cider.remote.app.ui.components.AnimatedCover
 import cider.remote.app.ui.components.LightStatusBarIcons
 import cider.remote.app.ui.components.asBackground
+import cider.remote.app.ui.components.pageBackground
+import cider.remote.app.ui.components.fadeInto
 import cider.remote.app.ui.components.rememberArtworkColor
 import cider.remote.app.ui.components.ArtworkImage
 import cider.remote.app.ui.components.CircleButton
@@ -151,8 +155,11 @@ fun LibraryHome(
     // Teléfono: pins de 3 en 3 y recientes en 2 columnas. Tablet: lo que quepa con celdas de 166 dp.
     val pinsPerRow = if (layout.expanded) layout.columns(160.dp, 3) else 3
     val showTitle = !layout.expanded
+    val homeGrid = rememberLazyGridState()
+    cider.remote.app.ui.ScrollToTopEffect { homeGrid.animateScrollToItem(0) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(layout.columns(160.dp, 2)),
+        state = homeGrid,
         contentPadding = gridPadding(contentPadding),
         horizontalArrangement = Arrangement.spacedBy(GridGap),
         modifier = Modifier.fillMaxSize(),
@@ -534,6 +541,7 @@ private fun WideCollectionHeader(
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onAddLater: () -> Unit,
+    onArtist: (() -> Unit)? = null,
 ) {
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Column(Modifier.padding(start = Margin, end = Margin, top = top + 74.dp)) {
@@ -547,6 +555,7 @@ private fun WideCollectionHeader(
                 if (!route.subtitle.isNullOrBlank()) Text(
                     route.subtitle, style = Apple.type.title1.copy(fontWeight = FontWeight.Normal),
                     color = Color.White.copy(alpha = 0.9f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).combinedClickableCompat(onClick = onArtist),
                 )
                 val meta = collectionMeta(route, count)
                 Text(meta, style = Apple.type.subhead.copy(fontWeight = FontWeight.SemiBold), color = Color.White.copy(alpha = 0.62f),
@@ -581,6 +590,11 @@ private fun Color.darker(f: Float) = Color(red * f, green * f, blue * f, alpha)
 @Composable
 fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPadding: PaddingValues) {
     val scope = rememberCoroutineScope()
+    // Tocar el nombre del artista (solo álbumes) abre su página; el artista se consulta al tocar.
+    val openRoute = cider.remote.app.ui.LocalOpenRoute.current
+    val toArtist: (() -> Unit)? = if (route.isPlaylist) null else ({
+        scope.launch { runCatching { remote.api.albumArtist(route.kind, route.id) }.getOrNull()?.toRoute()?.let(openRoute) }
+    })
     val tracks by produceState<Result<List<TrackRow>>?>(null, route) {
         value = runCatching { remote.api.tracks(route) }
     }
@@ -589,7 +603,10 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
     }
     // Color oficial de Apple (catálogo) si lo hay; si no, el color medio de la carátula.
     val official = cover?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() }
-    val bg = (official ?: rememberArtworkColor(route.artwork) ?: Color(0xFF2C2C2E)).asBackground()
+    val bg = (official ?: rememberArtworkColor(route.artwork) ?: Color(0xFF2C2C2E)).pageBackground(dark = androidx.compose.foundation.isSystemInDarkTheme())
+    val pageBackground = cider.remote.app.ui.LocalPageBackground.current
+    androidx.compose.runtime.SideEffect { pageBackground.value = bg }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { pageBackground.value = null } }
     val wideScreen = wide
     // En tablet la portada va en tarjeta (vídeo cuadrado); el vertical a todo el ancho sería enorme.
     val tall = cover?.tall?.takeUnless { wideScreen }
@@ -606,21 +623,17 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
             }
             // La API de Cider no puede empezar una colección en la canción N (play-collection
             // arranca en la primera y saltar después se oye). Así que: reproducir la canción
-            // tocada y encolar detrás las siguientes con "a continuación" en orden inverso,
-            // para que queden en orden y por delante de lo que añada la reproducción automática.
+            // tocada y encolar detrás las siguientes, en orden (ver CiderRemote.playThenQueue).
             val chosen = list[startAt]
-            remote.api.playItem(chosen.type, chosen.id)
-            list.drop(startAt + 1).take(MAX_FOLLOWING).asReversed().forEach {
-                remote.api.queueAddNext(it.type, it.id)
-            }
+            remote.playThenQueue(chosen.type, chosen.id, list.drop(startAt + 1).take(MAX_FOLLOWING).map { it.type to it.id })
         }
     }
     LightStatusBarIcons()
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to bg.darker(0.6f), 0.35f to bg))) {
+    Box(Modifier.fillMaxSize().background(bg)) {
         LazyVerticalGrid(columns = GridCells.Fixed(1), contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             fullWidth {
                 if (wideScreen) WideCollectionHeader(
-                    route, cover?.square, tracks?.getOrNull()?.size,
+                    route, cover?.square, tracks?.getOrNull()?.size, onArtist = toArtist,
                     onPlay = { play(false) }, onShuffle = { play(true) },
                     onAddLater = { scope.launch { runCatching { remote.api.queueAddLater(route.kind, route.id) } } },
                 ) else
@@ -634,7 +647,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                                     contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                                 )
                             }
-                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to bg)))
+                            Box(Modifier.fillMaxSize().background(fadeInto(bg)))
                         }
                     } else {
                         // Sin vídeo: tarjeta de 257 dp centrada, a 125 dp del borde superior.
@@ -653,7 +666,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                         if (!route.subtitle.isNullOrBlank()) Text(
                             route.subtitle, style = Apple.type.title3.copy(fontWeight = FontWeight.Normal),
                             color = Color.White.copy(alpha = 0.9f), textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 2.dp),
+                            modifier = Modifier.padding(top = 2.dp).clip(RoundedCornerShape(6.dp)).combinedClickableCompat(onClick = toArtist).padding(horizontal = 6.dp),
                         )
                         val count = tracks?.getOrNull()?.size
                         val meta = collectionMeta(route, count)

@@ -99,8 +99,11 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
 
     val layout = LocalWindowLayout.current
     val margin = Margin
+    val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    cider.remote.app.ui.ScrollToTopEffect { grid.animateScrollToItem(0) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(layout.columns(200.dp, 2)),
+        state = grid,
         contentPadding = PaddingValues(start = margin, end = margin, top = contentPadding.calculateTopPadding(), bottom = contentPadding.calculateBottomPadding()),
         horizontalArrangement = Arrangement.spacedBy(TileGap),
         modifier = Modifier.fillMaxSize(),

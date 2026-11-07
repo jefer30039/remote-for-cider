@@ -135,6 +135,7 @@ private fun ShelvesScreen(
     // obliga a HWUI a importar la textura y redibujar el vidrio: en reposo da igual, al desplazar no).
     val players = rememberCoverPlayerPool()
     val listState = rememberLazyListState()
+    cider.remote.app.ui.ScrollToTopEffect { listState.animateScrollToItem(0) }
     LaunchedEffect(listState, players) {
         snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
             if (scrolling) players.paused = true else { delay(600); players.paused = false }

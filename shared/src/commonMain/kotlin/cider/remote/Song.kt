@@ -34,3 +34,15 @@ suspend fun CiderApi.songLinks(id: String): SongLinks {
         artist = first("artists"),
     )
 }
+
+/**
+ * Artista principal de un álbum (`albums` del catálogo o `library-albums`), como [HomeItem]
+ * (`artists` o `library-artists`), para "ir al artista" desde la página del álbum.
+ */
+suspend fun CiderApi.albumArtist(kind: String, id: String): HomeItem? {
+    val path = if (kind == "library-albums") "v1/me/library/albums/$id?include=artists"
+    else "v1/catalog/\$STOREFRONT/albums/$id?include=artists"
+    val root = CiderJson.parseToJsonElement(rawGet(path)).jsonObject
+    val album = root["data"]?.jsonObject?.get("data")?.jsonArray?.firstOrNull()?.jsonObject ?: return null
+    return album.obj("relationships")?.obj("artists")?.get("data")?.jsonArray?.firstOrNull()?.jsonObject?.toHomeItem(preferNotes = false)
+}
