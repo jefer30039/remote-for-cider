@@ -406,10 +406,11 @@ fun Modifier.glassEdge(shape: androidx.compose.ui.graphics.Shape): Modifier =
  * progresivo con dos capas), sin borde visible.
  */
 @Composable
-fun Modifier.glassFade(backdrop: GlassBackdrop, tint: Color): Modifier {
-    // Velo con curva suave: casi opaco arriba, nada abajo.
-    val veil = fadeOut(tint, 0.96f, from = 0f, to = 1f)
-    if (!LiquidGlassSupported) return drawBehind { drawRect(veil) }
+fun Modifier.glassFade(backdrop: GlassBackdrop, tint: Color, withVeil: Boolean = true): Modifier {
+    // Velo con curva suave: casi opaco arriba, nada abajo. Sin él ([withVeil] = false) cuando el
+    // velo va dentro de la página (glassFadeVeil): así las piezas de vidrio de arriba lo ven.
+    val veil = if (withVeil) fadeOut(tint, 0.96f, from = 0f, to = 1f) else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+    if (!LiquidGlassSupported) return drawBehind { drawRect(fadeOut(tint, 0.96f, from = 0f, to = 1f)) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val soft = remember(density) { blurEffect(with(density) { 6.dp.toPx() }) }
     val strong = remember(density) { blurEffect(with(density) { 30.dp.toPx() }) }
@@ -457,6 +458,14 @@ private fun glassFadePiece(
         drawContent()
     }
 }
+
+/**
+ * El velo del borde superior por separado, para dibujarlo **dentro** de la capa de la página
+ * (glassSource): las piezas de vidrio de arriba (barra de tablet, volver, ⋮) leen esa capa y,
+ * si el velo quedaba fuera, enseñaban el contenido nítido y saturado en medio de una franja
+ * desenfocada y lavada (contraste fuerte en claro y en oscuro). No es vidrio: no hay recursión.
+ */
+fun Modifier.glassFadeVeil(tint: Color): Modifier = drawBehind { drawRect(fadeOut(tint, 0.96f, from = 0f, to = 1f)) }
 
 /**
  * Degradado vertical de [alpha] a 0 entre [from] y [to] (fracciones del alto) con

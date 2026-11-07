@@ -109,6 +109,7 @@ import cider.remote.app.ui.components.glassEdge
 import cider.remote.app.ui.components.rememberGlassBackdrop
 import cider.remote.app.ui.components.rememberSharedBackdrop
 import cider.remote.app.ui.components.LocalPageHidden
+import cider.remote.app.ui.components.glassFadeVeil
 import androidx.compose.runtime.CompositionLocalProvider
 import cider.remote.app.ui.components.LiquidGlassSupported
 import androidx.compose.runtime.derivedStateOf
@@ -319,6 +320,13 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         }
         // Luminancia detrás de las piezas: un poco después de cambiar de pantalla (el contenido llega asíncrono).
         LaunchedEffect(route) { for (ms in listOf(150L, 500L, 1200L, 2500L)) { delay(ms); sampler.request() } }
+        // Borde de desplazamiento bajo la barra de estado: solo con contenido debajo, como iOS
+        // (las páginas de álbum empiezan con su carátula arriba). En todas las pantallas (iOS 26);
+        // sobre álbum y artista, con el color de fondo de esa página.
+        val edge = animateFloatAsState(if (pastEdge) 1f else 0f, label = "borde")
+        val edgeVisible by remember { derivedStateOf { edge.value > 0f } }
+        val pageColor = pages.colorOf(topEntry.key).value
+        val edgeHeight = top + if (wide) 88.dp else 56.dp
         Box(
             Modifier.fillMaxSize().glassSource(haze)
                 .then(if (pageLayer != null) Modifier.layerBackdrop(pageLayer) else Modifier)
@@ -406,17 +414,21 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                     )
                 }
             }
-        } }
+        }
+            // Velo del borde superior dentro de la capa de la página: el vidrio de arriba lo ve
+            // (si no, enseñaba el contenido nítido en medio de la franja lavada). Capa propia:
+            // su fundido no regraba la página.
+            if (edgeVisible) Box(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth().height(edgeHeight)
+                    .graphicsLayer { alpha = edge.value }.glassFadeVeil(pageColor ?: Apple.colors.background),
+            )
+        }
 
-        // Borde de desplazamiento bajo la barra de estado: solo con contenido debajo, como iOS
-        // (las páginas de álbum empiezan con su carátula arriba).
-        val edge = animateFloatAsState(if (pastEdge) 1f else 0f, label = "borde")
-        val edgeVisible by remember { derivedStateOf { edge.value > 0f } }
-        // En todas las pantallas (iOS 26); sobre álbum y artista, con el color de fondo de esa página.
-        val pageColor = pages.colorOf(topEntry.key).value
+        // Borde de desplazamiento bajo la barra de estado: los desenfoques van encima de la página;
+        // el velo, dentro de ella (ver arriba).
         if (edgeVisible) Box(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(top + if (wide) 88.dp else 56.dp)
-                .graphicsLayer { alpha = edge.value }.glassFade(haze, pageColor ?: Apple.colors.background),
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(edgeHeight)
+                .graphicsLayer { alpha = edge.value }.glassFade(haze, pageColor ?: Apple.colors.background, withVeil = false),
         )
 
         if (anyShows { it.nested }) {
