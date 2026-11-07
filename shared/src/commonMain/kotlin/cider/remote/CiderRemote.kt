@@ -99,7 +99,14 @@ class CiderRemote(
             events.stream().collect { item ->
                 when (item) {
                     is CiderEvents.Item.State -> onSocketState(item.state)
-                    is CiderEvents.Item.Event -> onEvent(item.event)
+                    // Un evento con una forma inesperada no debe tirar la app: se ignora.
+                    is CiderEvents.Item.Event -> try {
+                        onEvent(item.event)
+                    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        println("CiderRemote: evento ${item.event.type} ignorado: $e")
+                    }
                 }
             }
         }

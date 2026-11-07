@@ -170,14 +170,18 @@ data class ClientInfo(
     val port: Int = 0,
 )
 
-/** Línea de tiempo de `playbackTimeDidChange`. */
+/**
+ * Línea de tiempo de `playbackTimeDidChange`. Todos los campos son opcionales: Cider
+ * omite `endEpochMs` (y puede omitir otros) cuando no conoce la duración, por ejemplo
+ * en emisoras en vivo; con campos obligatorios la app se cerraba (visto en la 1.0.0).
+ */
 @Serializable
 data class TimeAnchor(
-    val startEpochMs: Long,
-    val endEpochMs: Long,
-    val currentTime: Double,
-    val duration: Double,
-    val timestamp: Long,
+    val startEpochMs: Long? = null,
+    val endEpochMs: Long? = null,
+    val currentTime: Double? = null,
+    val duration: Double? = null,
+    val timestamp: Long? = null,
     val rate: Double = 1.0,
 )
 

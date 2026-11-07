@@ -99,7 +99,7 @@ Payloads reales (catálogo completo en `referencia/catalogo-eventos.json`, `data
 - `playbackStatus.nowPlayingItemDidChange`: atributos de la pista (como `/playback/now-playing`).
 - `playbackStatus.playbackStateDidChange`: `{attributes, state: playing|paused|stopped, anchor}`.
 - `playbackStatus.playbackTimeDidChange` (~1 s): `{currentPlaybackTime, currentPlaybackDuration, currentPlaybackTimeRemaining, isPlaying, anchor}`.
-- `anchor = {startEpochMs, endEpochMs, currentTime, duration, timestamp, rate}`: permite interpolar el progreso localmente.
+- `anchor = {startEpochMs, endEpochMs, currentTime, duration, timestamp, rate}`: permite interpolar el progreso localmente. **`endEpochMs` puede faltar** (visto en el teléfono el 2026-11-07, seguramente con duración desconocida: emisoras en vivo); tratar todos los campos como opcionales.
 - `playbackStatus.nowPlayingStatusDidChange`: `{inLibrary, inFavorites}`.
 - `playbackStatus.transitionStarted|Completed`: `{mode, from, to}`.
 - `playerStatus.volumeDidChange`: número 0–1. `repeatModeDidChange`: 0/1/2. `shuffleModeDidChange`: 0/1.
