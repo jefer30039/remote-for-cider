@@ -197,7 +197,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     val bottom = if (wide) barBottom + (if (hasTrack) WideMiniHeight else 0.dp) + 24.dp
     else barBottom + TabBarHeight + (if (hasTrack) MiniHeight + BarGap else 0.dp) + 24.dp
     // En tablet la barra de pestañas va arriba (cápsula de 46 dp) y no hay título grande.
-    val wideTop = top + 10.dp + 46.dp + 18.dp
+    val wideTop = top + 10.dp + WideBarHeight + 18.dp
 
     val haze = rememberGlassBackdrop()
     val sampler = rememberBackdropSampler()
@@ -216,6 +216,10 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     val darkBar = darkBottom
     val darkTop = sampler.dark["arriba"] ?: themeDark
     val darkBack = sampler.dark["volver"] ?: themeDark
+    // Tablet: barra de pestañas superior, con su propia zona de muestreo.
+    val darkWideBar = sampler.dark["barra"] ?: themeDark
+    val wideBarLabel = animateColorAsState(if (darkWideBar) Color.White else Color.Black, tween(250), label = "textoBarraArriba")
+    val wideBarVeil = androidx.compose.runtime.rememberUpdatedState(if (darkWideBar) Color(0xFF121212).copy(alpha = 0.4f) else Color(0xFFFAFAFA).copy(alpha = 0.4f))
     val backLabel = animateColorAsState(if (darkBack) Color.White else Color.Black, tween(250), label = "textoVolver")
     val miniLabel = animateColorAsState(if (darkMini) Color.White else Color.Black, tween(250), label = "textoMini")
     val barLabel = animateColorAsState(if (darkBar) Color.White else Color.Black, tween(250), label = "textoBarra")
@@ -295,7 +299,17 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                     compact -> CompactBarHeight.toPx()
                     else -> (TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp).toPx()
                 }
-                val pieces = mapOf("abajo" to rect(left, bandTop, right, floor))
+                val pieces = if (wide) {
+                    val miniW = minOf(WideMiniMaxWidth.toPx(), w - 2 * SideMargin.toPx())
+                    val miniL = (w - miniW) / 2
+                    val barW = (WideMenuButton + WideBarGap + WideTabWidth * Tab.entries.size + 8.dp).toPx()
+                    val barL = (w - barW) / 2
+                    val barT = (top + 10.dp).toPx()
+                    mapOf(
+                        "abajo" to rect(miniL, bandTop, miniL + miniW, floor),
+                        "barra" to rect(barL, barT, barL + barW, barT + WideBarHeight.toPx()),
+                    )
+                } else mapOf("abajo" to rect(left, bandTop, right, floor))
                 sampler.regions = pieces +
                     ("arriba" to rect(w - (SideMargin + 40.dp).toPx(), (top + 13.dp).toPx(), w - SideMargin.toPx(), (top + 53.dp).toPx())) +
                     ("volver" to rect(SideMargin.toPx(), (top + 13.dp).toPx(), (SideMargin + 40.dp).toPx(), (top + 53.dp).toPx()))
@@ -451,16 +465,27 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         }
 
         if (wide) {
-            TopTabBar(tab, haze, onMenu = { sidebar = true }, onSelect = select,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = top + 10.dp))
+            // La misma barra de vidrio líquido que el teléfono (lente que se arrastra entre pestañas,
+            // tono adaptado a lo que hay detrás), con textos; el ≡ queda a su izquierda.
+            val wideLabel = remember { { wideBarLabel.value } }
+            val wideVeil = remember { { wideBarVeil.value } }
+            Row(
+                Modifier.align(Alignment.TopCenter).padding(top = top + 10.dp).height(WideBarHeight),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SidebarButton(haze, wideLabel) { sidebar = true }
+                Spacer(Modifier.width(WideBarGap))
+                WideTabBar(tab, pageBackdrop, select, label = wideLabel, container = wideVeil)
+            }
             // Opciones de conexión arriba a la derecha en las raíces.
             if (anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)() }) {
                 ConnectionMenuButton(connection.endpoint.host, onForget, backdrop = haze)
             }
             if (hasTrack) WideMiniPlayer(
                 remote, state, haze, onOpen = openSheet,
+                label = { miniLabel.value }, container = { miniVeil.value },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = barBottom)
-                    .widthIn(max = 686.dp).fillMaxWidth().padding(horizontal = SideMargin).sheetDrag(sheet),
+                    .widthIn(max = WideMiniMaxWidth).fillMaxWidth().padding(horizontal = SideMargin).sheetDrag(sheet),
             )
             AnimatedVisibility(sidebar, enter = slideInHorizontally { -it }, exit = slideOutHorizontally { -it }) {
                 Sidebar(tab, haze, connection.endpoint.host, onSelect = { select(it); sidebar = false }, onClose = { sidebar = false }, onForget = onForget)
@@ -534,36 +559,62 @@ private class UnderPageClip(private val p: Float) : androidx.compose.ui.graphics
     override fun hashCode() = p.hashCode()
 }
 
+/** Medidas de la barra superior de tablet: segmentos iguales (la lente de Kyant salta entre ellos). */
+private val WideBarHeight = 52.dp
+private val WideTabWidth = 104.dp
+private val WideMenuButton = 40.dp
+private val WideBarGap = 10.dp
+private val WideMiniMaxWidth = 686.dp
+
+/** ≡ de la barra lateral: botón de vidrio como los de cabecera; el tono se lee en su propio ámbito. */
+@Composable
+private fun SidebarButton(haze: GlassBackdrop, tint: () -> Color, onClick: () -> Unit) {
+    GlassCircleButton(Icons.Filled.Menu, stringResource(R.string.action_sidebar), onClick = onClick, tint = tint(), backdrop = haze)
+}
+
 /**
- * Barra de pestañas de tablet (Apple Music en iPad/tablet): cápsula arriba en el
- * centro con ≡ (barra lateral), las pestañas en texto y la lupa al final.
+ * Barra de pestañas de tablet (Apple Music en iPadOS 26): la de vidrio líquido del teléfono
+ * (LiquidBottomTabs de Kyant), arriba en el centro, con los nombres de las secciones y la lupa.
  */
 @Composable
-private fun TopTabBar(selected: Tab, haze: GlassBackdrop, onMenu: () -> Unit, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
-    val shape = CircleShape
-    Row(
-        modifier.height(46.dp)
-            .shadow(12.dp, shape, ambientColor = Color.Black.copy(alpha = 0.4f))
-            .clip(shape).glass(haze).glassEdge(shape)
-            .padding(3.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun WideTabBar(
+    selected: Tab,
+    backdrop: Backdrop,
+    onSelect: (Tab) -> Unit,
+    label: () -> Color,
+    container: () -> Color,
+) {
+    val tabs = Tab.entries
+    // Lambdas estables que leen estado (ver TabBar): el componente las lee desde corrutinas.
+    val current by rememberUpdatedState(selected)
+    val select by rememberUpdatedState(onSelect)
+    val selectedIndex = remember { { tabs.indexOf(current) } }
+    LiquidBottomTabs(
+        selectedTabIndex = selectedIndex,
+        onTabSelected = { i -> if (tabs[i] != current) select(tabs[i]) },
+        backdrop = backdrop,
+        tabsCount = tabs.size,
+        modifier = Modifier.width(WideTabWidth * tabs.size + 8.dp),
+        containerColor = container,
+        onCurrentTabTapped = { onSelect(selected) },
+        barHeight = WideBarHeight,
+        lensHeight = WideBarHeight - 8.dp,
     ) {
-        TopBarIcon(Icons.Filled.Menu, stringResource(R.string.action_sidebar), active = false, onClick = onMenu)
-        Tab.entries.filter { it != Tab.Search }.forEach { t ->
-            val active = t == selected
-            Box(
-                Modifier.fillMaxHeight().clip(shape)
-                    .background(if (active) Apple.colors.label.copy(alpha = 0.1f) else Color.Transparent)
-                    .combinedClickableCompat(onClick = { onSelect(t) })
-                    .semantics { role = Role.Tab; this.selected = active }
-                    .padding(horizontal = 22.dp),
-                contentAlignment = Alignment.Center,
+        tabs.forEach { t ->
+            val isSelected = t == selected
+            val name = stringResource(t.label)
+            LiquidBottomTab(
+                { onSelect(t) },
+                Modifier.semantics { role = Role.Tab; this.selected = isSelected; contentDescription = name },
             ) {
-                Text(stringResource(t.label), style = Apple.type.headline.copy(fontWeight = FontWeight.Medium),
-                    color = if (active) Apple.colors.accent else Apple.colors.label)
+                // Colores leídos al dibujar: el cambio de tono no recompone la barra.
+                if (t == Tab.Search) TintedIcon(t.icon, 24.dp, label)
+                else androidx.compose.foundation.text.BasicText(
+                    name, style = Apple.type.headline.copy(fontWeight = FontWeight.Medium),
+                    color = { label() }, maxLines = 1,
+                )
             }
         }
-        TopBarIcon(AppleIcons.TabSearch, stringResource(R.string.tab_search), active = selected == Tab.Search) { onSelect(Tab.Search) }
     }
 }
 

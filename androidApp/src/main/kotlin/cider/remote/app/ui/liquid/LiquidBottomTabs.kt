@@ -79,6 +79,9 @@ fun LiquidBottomTabs(
     overlay: @Composable BoxScope.() -> Unit = {},
     /** Toque sin arrastre sobre la lente (la pestaña activa): la lente se traga el clic de la pestaña de debajo. */
     onCurrentTabTapped: () -> Unit = {},
+    /** Alto de la barra y de la lente (teléfono: 64 y 56 dp; la barra superior de tablet es más baja). */
+    barHeight: androidx.compose.ui.unit.Dp = 64f.dp,
+    lensHeight: androidx.compose.ui.unit.Dp = 56f.dp,
     content: @Composable RowScope.() -> Unit
 ) {
     // Colores de la app en vez de los fijos del ejemplo.
@@ -201,7 +204,7 @@ fun LiquidBottomTabs(
                     onDrawSurface = { drawRect(containerColor()) }
                 )
                 .then(interactiveHighlight.modifier)
-                .compactHeight(64f.dp, compactProgress)
+                .compactHeight(barHeight, compactProgress)
                 .fillMaxWidth()
                 .padding(4f.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -240,7 +243,7 @@ fun LiquidBottomTabs(
                         onDrawSurface = { drawRect(containerColor()) }
                     )
                     .then(interactiveHighlight.modifier)
-                    .compactHeight(56f.dp, compactProgress)
+                    .compactHeight(lensHeight, compactProgress)
                     .fillMaxWidth()
                     .padding(horizontal = 4f.dp)
                     .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
@@ -304,7 +307,7 @@ fun LiquidBottomTabs(
                         drawRect(Color.Black.copy(alpha = 0.03f * progress))
                     }
                 )
-                .compactHeight(56f.dp, compactProgress)
+                .compactHeight(lensHeight, compactProgress)
                 .fillMaxWidth(1f / tabsCount)
         )
 

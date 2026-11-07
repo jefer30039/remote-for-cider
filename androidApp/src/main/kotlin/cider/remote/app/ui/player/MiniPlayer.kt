@@ -185,28 +185,51 @@ fun WideMiniPlayer(
     haze: GlassBackdrop,
     onOpen: (SheetMode) -> Unit,
     modifier: Modifier = Modifier,
+    /** Color de texto e iconos según lo que hay detrás (blanco o negro); leído al dibujar. */
+    label: (() -> Color)? = null,
+    /** Velo del vidrio, leído al dibujar. */
+    container: (() -> Color)? = null,
 ) {
     val track = state.track
-    val shape = CircleShape
-    val dim = Apple.colors.label.copy(alpha = 0.45f)
     val openDescription = stringResource(R.string.action_open_now_playing)
+    // El mismo vidrio que el miniplayer y la barra del teléfono (Kyant): vibrancia, desenfoque
+    // 8 dp, lente 24 dp, brillo del canto y sombra propia, sobre la misma capa de la página.
+    val backdrop = rememberSharedBackdrop(haze)
+    val themeContainer = if (Apple.colors.isDark) Color(0xFF121212).copy(alpha = 0.4f) else Color(0xFFFAFAFA).copy(alpha = 0.4f)
+    val veil: () -> Color = container ?: { themeContainer }
+    val themeLabel = Apple.colors.label
+    val accent = Apple.colors.accent
+    // Colores leídos al dibujar: la animación de tono no recompone el reproductor.
+    val primary: () -> Color = { label?.invoke() ?: themeLabel }
+    val secondary: () -> Color = { primary().copy(alpha = 0.6f) }
+    val dim: () -> Color = { primary().copy(alpha = 0.45f) }
     Row(
         modifier.height(63.dp)
-            .shadow(16.dp, shape, ambientColor = Color.Black.copy(alpha = 0.4f))
-            .clip(shape).glass(haze).glassEdge(shape)
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { Capsule() },
+                effects = {
+                    vibrancy()
+                    blur(8f.dp.toPx())
+                    lens(24f.dp.toPx(), 24f.dp.toPx())
+                },
+                onDrawSurface = { drawRect(veil()) },
+            )
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MiniButton(Icons.Filled.Shuffle, stringResource(R.string.action_shuffle), tint = if (state.shuffle) Apple.colors.accent else dim, size = 22.dp) { remote.toggleShuffle() }
-        MiniButton(AppleIcons.Backward, stringResource(R.string.action_previous), size = 30.dp, onClick = remote::previous)
+        val shuffle = state.shuffle
+        MiniButton(Icons.Filled.Shuffle, stringResource(R.string.action_shuffle), tint = { if (shuffle) accent else dim() }, size = 22.dp) { remote.toggleShuffle() }
+        MiniButton(AppleIcons.Backward, stringResource(R.string.action_previous), tint = primary, size = 30.dp, onClick = remote::previous)
         MiniButton(
             if (state.isPlaying) AppleIcons.Pause else AppleIcons.Play,
-            stringResource(if (state.isPlaying) R.string.action_pause else R.string.action_play), size = 26.dp, onClick = remote::togglePlay,
+            stringResource(if (state.isPlaying) R.string.action_pause else R.string.action_play), tint = primary, size = 26.dp, onClick = remote::togglePlay,
         )
-        MiniButton(AppleIcons.Forward, stringResource(R.string.action_next), size = 30.dp, onClick = remote::next)
+        MiniButton(AppleIcons.Forward, stringResource(R.string.action_next), tint = primary, size = 30.dp, onClick = remote::next)
+        val repeat = state.repeat
         MiniButton(
-            if (state.repeat == cider.remote.model.RepeatMode.One) Icons.Filled.RepeatOne else Icons.Filled.Repeat, stringResource(R.string.action_repeat),
-            tint = if (state.repeat != cider.remote.model.RepeatMode.None) Apple.colors.accent else dim, size = 22.dp,
+            if (repeat == cider.remote.model.RepeatMode.One) Icons.Filled.RepeatOne else Icons.Filled.Repeat, stringResource(R.string.action_repeat),
+            tint = { if (repeat != cider.remote.model.RepeatMode.None) accent else dim() }, size = 22.dp,
         ) { remote.cycleRepeat() }
         Row(
             Modifier.weight(1f).padding(horizontal = 10.dp).clip(RoundedCornerShape(8.dp))
@@ -216,11 +239,11 @@ fun WideMiniPlayer(
         ) {
             ArtworkImage(track?.artwork, 40.dp, shape = RoundedCornerShape(5.dp), px = 160)
             Column(Modifier.padding(start = 12.dp)) {
-                Text(track?.name.orEmpty(), style = Apple.type.headline, color = Apple.colors.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(track?.artistName.orEmpty(), style = Apple.type.subhead, color = Apple.colors.secondaryLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                BasicText(track?.name.orEmpty(), style = Apple.type.headline, color = { primary() }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                BasicText(track?.artistName.orEmpty(), style = Apple.type.subhead, color = { secondary() }, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        MiniButton(AppleIcons.Lyrics, stringResource(R.string.action_lyrics), size = 26.dp) { onOpen(SheetMode.Lyrics) }
-        MiniButton(Icons.AutoMirrored.Filled.FormatListBulleted, stringResource(R.string.up_next), size = 26.dp) { onOpen(SheetMode.Queue) }
+        MiniButton(AppleIcons.Lyrics, stringResource(R.string.action_lyrics), tint = primary, size = 26.dp) { onOpen(SheetMode.Lyrics) }
+        MiniButton(Icons.AutoMirrored.Filled.FormatListBulleted, stringResource(R.string.up_next), tint = primary, size = 26.dp) { onOpen(SheetMode.Queue) }
     }
 }

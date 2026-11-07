@@ -30,6 +30,18 @@ class TtmlParserTest {
     }
 
     @Test
+    fun syllablesKeepWordBoundariesAndSkipNestedBackground() {
+        val ttml = """<tt itunes:timing="Word"><body><div>""" +
+            """<p begin="26" end="28"><span begin="26.1" end="26.3">I</span> <span begin="26.756" end="26.965">con</span>""" +
+            """<span begin="26.965" end="27.215">ver</span><span begin="27.215" end="27.655">sation</span> <span begin="27.7" end="28">ends</span>""" +
+            """<span ttm:role="x-bg"><span begin="27" end="27.5">(ooh</span> <span begin="27.5" end="28">ah)</span></span></p></div></body></tt>"""
+        val line = TtmlParser.parse(ttml).lines.single()
+        assertEquals("I conversation ends", line.text)
+        assertEquals(listOf("I", "con", "ver", "sation", "ends"), line.words.map { it.text })
+        assertEquals(listOf(true, false, false, true, false), line.words.map { it.spaceAfter })
+    }
+
+    @Test
     fun unsynced() {
         val lyrics = TtmlParser.parse("""<tt itunes:timing="None"><body><div><p>Sin tiempo</p></div></body></tt>""")
         assertEquals(-1, lyrics.indexAt(10.0))

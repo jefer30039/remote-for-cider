@@ -186,7 +186,8 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         if (video == null || mode != SheetMode.Artwork) {
             ColorField(palette, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         }
-        if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag)
+        // Tablet: la portada animada cuadrada dentro de la tarjeta (iPad); el fondo sigue siendo el campo de color.
+        if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag, cover?.square)
         else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag, video)
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
@@ -313,24 +314,44 @@ private fun PhoneSheet(
  * Abajo, el dispositivo a la izquierda y letra/cola a la derecha.
  */
 @Composable
-private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode, onMode: (SheetMode) -> Unit, dismissDrag: Modifier) {
+private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode, onMode: (SheetMode) -> Unit, dismissDrag: Modifier, squareVideo: String?) {
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         val w = maxWidth
         val h = maxHeight
-        // Proporciones del iPad: carátula 0,54 del alto, columna centrada en el 23 % del ancho.
-        val art = minOf(h * 0.54f, h - 340.dp, w * 0.4f).coerceAtLeast(160.dp)
         val panel = mode != SheetMode.Artwork
+        // Vertical (iPad en vertical): carátula grande (72 % del ancho) y la columna centrada en el
+        // alto, encima de los botones de abajo; antes quedaba limitada al 40 % del ancho, pegada arriba
+        // y con media pantalla vacía. Con letra o cola, la disposición de horizontal.
+        val portrait = h > w
+        // Proporciones del iPad en horizontal: carátula 0,54 del alto, columna centrada en el 23 % del ancho.
+        val landscapeArt = minOf(h * 0.54f, h - 340.dp, w * 0.4f).coerceAtLeast(160.dp)
+        val art by animateDpAsState(
+            if (portrait && !panel) minOf(w * 0.72f, h - 460.dp).coerceAtLeast(160.dp) else landscapeArt, label = "caratula",
+        )
         val center by animateDpAsState(if (panel) w * 0.23f else w / 2, label = "columna")
+        // Alto aproximado de lo que va bajo la carátula (título, progreso, controles, volumen).
+        val below = 250.dp
+        val topPad by animateDpAsState(
+            if (portrait && !panel) ((h - 64.dp - art - below) / 2).coerceAtLeast(24.dp) else h * 0.07f, label = "arriba",
+        )
         Column(
-            Modifier.width(art).offset { IntOffset((center - art / 2).roundToPx(), 0) }.padding(top = h * 0.07f),
+            Modifier.width(art).offset { IntOffset((center - art / 2).roundToPx(), 0) }.padding(top = topPad),
         ) {
             Box(Modifier.then(dismissDrag)) {
                 val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
-                ArtworkImage(
-                    state.track?.artwork, art, px = WideSheetArtworkPx, preview = PreviewArtworkPx, shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
-                        .shadow(24.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black),
-                )
+                val cardShape = RoundedCornerShape(10.dp)
+                val artPx = with(androidx.compose.ui.platform.LocalDensity.current) { art.roundToPx() }
+                // Portada animada cuadrada (la de la tarjeta del iPad), con la carátula fija debajo hasta
+                // que el vídeo pinta; se reproduce a la resolución de la tarjeta, sin sonido.
+                AnimatedCover(
+                    squareVideo,
+                    Modifier.size(art).graphicsLayer { scaleX = scale; scaleY = scale }
+                        .shadow(24.dp, cardShape, ambientColor = Color.Black, spotColor = Color.Black)
+                        .clip(cardShape),
+                    maxVideoSize = androidx.compose.ui.unit.IntSize(artPx, artPx),
+                ) {
+                    ArtworkImage(state.track?.artwork, art, px = WideSheetArtworkPx, preview = PreviewArtworkPx, shape = cardShape)
+                }
             }
             Spacer(Modifier.height(16.dp))
             TitleRow(remote, state, compact = true)
