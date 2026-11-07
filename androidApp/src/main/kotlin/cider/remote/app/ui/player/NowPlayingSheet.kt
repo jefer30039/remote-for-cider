@@ -8,9 +8,14 @@ import cider.remote.songLinks
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import cider.remote.app.ui.components.rememberArtworkPalette
+import kotlinx.coroutines.delay
 import androidx.compose.animation.core.spring
-import coil3.request.crossfade
-import coil3.request.transformations
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
@@ -165,8 +170,9 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
             .background(Brush.linearGradient(listOf(background.lighter(1.12f), background, background.lighter(0.92f)))),
     ) {
-        // Fondo: la carátula muy desenfocada, oscureciéndose hacia abajo (iOS 26); con letra o cola, más oscuro.
-        SheetBackdrop(state.track?.artwork, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
+        // Fondo: campo de colores de la carátula con animación lenta (Apple Music), también en tablet.
+        // Con letra o cola, más oscuro.
+        ColorField(rememberArtworkPalette(state.track?.artwork), background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag)
         else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag)
         // Asa para indicar que se puede deslizar hacia abajo.
@@ -178,37 +184,47 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
 }
 
 /**
- * Carátula minúscula (64 px) suavizada y ampliada con filtro: un desenfoque enorme sin
- * coste por fotograma (`Modifier.blur(90.dp)` volvía a desenfocar toda la pantalla en cada
- * fotograma mientras avanzaba el progreso).
- */
-private object SoftBlur : coil3.transform.Transformation() {
-    override val cacheKey = "hoja-softblur"
-    override suspend fun transform(input: android.graphics.Bitmap, size: coil3.size.Size): android.graphics.Bitmap {
-        val tiny = android.graphics.Bitmap.createScaledBitmap(input, 10, 10, true)
-        return android.graphics.Bitmap.createScaledBitmap(tiny, 80, 80, true)
-    }
-}
-
-/**
- * Fondo de la hoja como en iOS 26: la carátula desenfocada y algo más saturada, fundida
- * hacia abajo con el color de fondo de la carátula; [dim] añade un velo negro (letra, cola, tablet).
+ * Fondo de Apple Music (teléfono y tablet): cuatro manchas radiales enormes con los colores
+ * dominantes de la carátula, derivando muy despacio (ciclos de 29–43 s; medido en la app
+ * oficial: 2–3/255 por canal cada 0,5 s), sobre el color más presente. Se dibuja a ~24 fps
+ * solo mientras la hoja está compuesta; la paleta nueva se funde en 1,2 s al cambiar de canción.
  */
 @Composable
-private fun SheetBackdrop(artwork: Artwork?, background: Color, dim: Float) {
-    val context = LocalContext.current
-    val url = artwork?.sized(64)
-    val request = remember(url) {
-        coil3.request.ImageRequest.Builder(context).data(url).transformations(listOf(SoftBlur)).crossfade(600).build()
+private fun ColorField(palette: List<Color>?, fallback: Color, dim: Float) {
+    val colors = palette?.takeIf { it.isNotEmpty() } ?: listOf(fallback.lighter(0.8f), fallback, fallback.lighter(1.25f), fallback.lighter(0.6f))
+    val time = remember { mutableLongStateOf(0L) }
+    val shown = remember { mutableStateOf(colors) }
+    val previous = remember { mutableStateOf(colors) }
+    val switchedAt = remember { mutableLongStateOf(0L) }
+    if (shown.value !== colors) { previous.value = shown.value; shown.value = colors; switchedAt.longValue = time.longValue }
+    LaunchedEffect(Unit) {
+        val start = withFrameNanos { it }
+        while (true) { withFrameNanos { now -> time.longValue = now - start }; delay(38) }
     }
-    AsyncImage(
-        model = request, contentDescription = null, contentScale = ContentScale.Crop,
-        filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-        colorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(1.35f) }),
-        modifier = Modifier.fillMaxSize(),
-    )
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.3f to Color.Transparent, 1f to background.copy(alpha = 0.9f))))
-    if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+    val periods = floatArrayOf(31f, 37f, 43f, 29f)
+    val phases = floatArrayOf(0f, 1.9f, 3.7f, 5.1f)
+    Box(Modifier.fillMaxSize().drawBehind {
+        val t = time.longValue / 1e9f
+        val mix = ((time.longValue - switchedAt.longValue) / 1.2e9f).coerceIn(0f, 1f)
+        fun colorAt(i: Int): Color {
+            val a = previous.value.getOrElse(i) { previous.value.last() }
+            val b = shown.value.getOrElse(i) { shown.value.last() }
+            return androidx.compose.ui.graphics.lerp(a, b, mix)
+        }
+        drawRect(colorAt(0))
+        val w = size.width; val h = size.height
+        for (i in 0 until 4) {
+            val th = t * (2f * Math.PI.toFloat() / periods[i]) + phases[i]
+            val cx = w * (0.5f + 0.5f * kotlin.math.cos(th))
+            val cy = h * (0.42f + 0.38f * kotlin.math.sin(th * 1.3f + phases[i]))
+            val r = w * (0.95f + 0.15f * kotlin.math.sin(th * 0.7f))
+            val c = colorAt((i + 1) % 4)
+            drawCircle(Brush.radialGradient(listOf(c.copy(alpha = 0.9f), c.copy(alpha = 0f)), Offset(cx, cy), r), r, Offset(cx, cy))
+        }
+        // Como en Apple, la parte baja es más oscura.
+        drawRect(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.45f)))
+        if (dim > 0f) drawRect(Color.Black.copy(alpha = dim))
+    })
 }
 
 /**
@@ -338,7 +354,16 @@ private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode
 /** Carátula (o portada animada) a todo el ancho que se funde con el fondo, como Apple Music en Android. */
 @Composable
 private fun HeroArtwork(artwork: Artwork?, video: String?, background: Color, height: androidx.compose.ui.unit.Dp, dragModifier: Modifier) {
-    Box(Modifier.fillMaxWidth().height(height).then(dragModifier)) {
+    // El borde inferior se funde a transparente (máscara DstIn) para que debajo asome el campo de
+    // colores animado, como en Apple Music; antes se fundía a un color plano.
+    Box(
+        Modifier.fillMaxWidth().height(height).then(dragModifier)
+            .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawRect(Brush.verticalGradient(0.55f to Color.Black, 1f to Color.Transparent), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+            },
+    ) {
         AnimatedCover(video, Modifier.fillMaxSize()) {
             AsyncImage(
                 model = artwork?.sized(PreviewArtworkPx),
@@ -353,11 +378,6 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, background: Color, he
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0.55f to Color.Transparent, 1f to background),
-            ),
-        )
     }
 }
 
@@ -483,7 +503,8 @@ private fun Progress(remote: CiderRemote, state: PlayerState) {
         while (true) {
             position = progress.positionNow()
             if (!progress.playing) break
-            withFrameMillis { }
+            // 10 veces por segundo basta (la barra avanza ~6 px/s): a cada fotograma mantenía la hoja a 120 fps.
+            delay(100)
         }
     }
     val quality by produceState<AudioQuality?>(null, state.track?.playParams?.id) {

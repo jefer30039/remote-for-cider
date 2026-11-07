@@ -18,7 +18,8 @@ import java.util.concurrent.ConcurrentHashMap
 internal const val SheetArtworkPx = 1000
 internal const val WideSheetArtworkPx = 800
 internal const val HeroArtworkPx = 1200
-internal const val SheetBackgroundPx = 300
+/** La paleta del fondo se saca de esta miniatura. */
+internal const val SheetBackgroundPx = 64
 /** El del miniplayer: casi siempre ya está en memoria y sirve de anticipo. */
 internal const val PreviewArtworkPx = 120
 

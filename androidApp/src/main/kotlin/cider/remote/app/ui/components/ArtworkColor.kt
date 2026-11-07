@@ -64,3 +64,51 @@ fun Color.asBackground(targetLuminance: Float = 0.022f, saturationBoost: Float =
     repeat(120) { if (c.luminance() > targetLuminance) c = Color(c.red * 0.975f, c.green * 0.975f, c.blue * 0.975f) }
     return c
 }
+
+private val paletteCache = ConcurrentHashMap<String, List<Color>>()
+
+/**
+ * Cuatro colores dominantes de la carátula (k-medias sobre 20 × 20 px), del más al menos
+ * presente, ya oscurecidos para el fondo de la hoja (Apple Music: brillo 0,10–0,38).
+ * Null mientras se calcula; mientras tanto se usa la paleta anterior.
+ */
+@Composable
+fun rememberArtworkPalette(artwork: Artwork?): List<Color>? {
+    val context = LocalContext.current
+    val url = artwork?.sized(64)
+    val known = url?.let { paletteCache[it] }
+    val palette by produceState(known, url) {
+        if (known != null || url == null) { value = known; return@produceState }
+        value = withContext(Dispatchers.Default) { extractPalette(context, url) }?.also { paletteCache[url] = it }
+    }
+    return palette
+}
+
+private suspend fun extractPalette(context: Context, url: String): List<Color>? = runCatching {
+    val request = ImageRequest.Builder(context).data(url).size(64).allowHardware(false).build()
+    val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult ?: return null
+    val bmp = Bitmap.createScaledBitmap(result.image.toBitmap(), 20, 20, true)
+    val px = IntArray(400); bmp.getPixels(px, 0, 20, 0, 0, 20, 20)
+    val pts = px.map { floatArrayOf(((it shr 16) and 0xFF) / 255f, ((it shr 8) and 0xFF) / 255f, (it and 0xFF) / 255f) }
+    // k-medias (k = 4) con semillas repartidas por brillo.
+    val sorted = pts.sortedBy { it[0] * 0.2126f + it[1] * 0.7152f + it[2] * 0.0722f }
+    val centers = Array(4) { sorted[(sorted.size - 1) * (2 * it + 1) / 8].clone() }
+    val counts = IntArray(4)
+    repeat(10) {
+        val sums = Array(4) { FloatArray(3) }; counts.fill(0)
+        for (q in pts) {
+            var best = 0; var bd = Float.MAX_VALUE
+            for (k in 0 until 4) { val c = centers[k]; val d = (q[0] - c[0]).let { it * it } + (q[1] - c[1]).let { it * it } + (q[2] - c[2]).let { it * it }; if (d < bd) { bd = d; best = k } }
+            counts[best]++; for (i in 0..2) sums[best][i] += q[i]
+        }
+        for (k in 0 until 4) if (counts[k] > 0) for (i in 0..2) centers[k][i] = sums[k][i] / counts[k]
+    }
+    (0 until 4).filter { counts[it] > 0 }.sortedByDescending { counts[it] }.map { k ->
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(android.graphics.Color.rgb((centers[k][0] * 255).toInt(), (centers[k][1] * 255).toInt(), (centers[k][2] * 255).toInt()), hsv)
+        // Al fondo de Apple: oscuro, algo saturado; los grises se quedan grises.
+        hsv[1] = (hsv[1] * 1.15f).coerceAtMost(0.75f)
+        hsv[2] = 0.12f + hsv[2] * 0.26f
+        Color(android.graphics.Color.HSVToColor(hsv))
+    }
+}.getOrNull()
