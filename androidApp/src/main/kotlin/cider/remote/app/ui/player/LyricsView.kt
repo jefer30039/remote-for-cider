@@ -177,10 +177,12 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
     LaunchedEffect(userMode, touches) {
         if (!userMode) return@LaunchedEffect
         delay(3000)
-        // Mismo sitio visual con el foco de ahora, y vuelta suave a la línea que suena.
+        // Mismo sitio visual con el foco de ahora, y vuelta suave a la línea que suena. La vuelta va
+        // en el ámbito de la vista: al poner userMode a falso este efecto se reinicia y, dentro de él,
+        // la animación se cancelaba nada más empezar (la letra se quedaba donde se dejó).
         manual.snapTo(manual.value + metrics.anchorAt(focus.value) - metrics.anchorAt(frozenFocus.floatValue))
         userMode = false
-        manual.animateTo(0f, spring(dampingRatio = 1f, stiffness = 110f))
+        scope.launch { manual.animateTo(0f, spring(dampingRatio = 1f, stiffness = 110f)) }
     }
 
     val style = lyricStyle()
