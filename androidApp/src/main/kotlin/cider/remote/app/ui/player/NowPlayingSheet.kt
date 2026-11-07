@@ -1,5 +1,8 @@
 package cider.remote.app.ui.player
 
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
 import cider.remote.HomeItem
 import cider.remote.SongLinks
 import cider.remote.app.ui.LocalOpenRoute
@@ -259,7 +262,25 @@ private fun PhoneSheet(
     video: String?,
 ) {
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // Con la letra a la vista y sonando, los controles se repliegan a los 4 s sin tocar nada y la
+    // letra ocupa la pantalla (Apple Music); cualquier toque los devuelve.
+    var touches by remember { mutableIntStateOf(0) }
+    var controlsHidden by remember { mutableStateOf(false) }
+    LaunchedEffect(mode, touches, state.isPlaying) {
+        controlsHidden = false
+        if (mode == SheetMode.Lyrics && state.isPlaying) { delay(4000); controlsHidden = true }
+    }
+    BoxWithConstraints(
+        Modifier.fillMaxSize().pointerInput(Unit) {
+            // Solo observa (no consume): los toques siguen llegando a la letra y a los botones.
+            awaitPointerEventScope {
+                while (true) {
+                    val e = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    if (e.type == androidx.compose.ui.input.pointer.PointerEventType.Press) touches++
+                }
+            }
+        },
+    ) {
         val width = maxWidth
         // Portada animada: 3:4 a todo el ancho, detrás de todo y fundida con el fondo.
         AnimatedVisibility(mode == SheetMode.Artwork && video != null, enter = fadeIn(), exit = fadeOut()) {
@@ -288,21 +309,27 @@ private fun PhoneSheet(
                     SheetMode.Lyrics, SheetMode.Queue -> Column(Modifier.fillMaxSize().statusBarsPadding()) {
                         CompactHeader(remote, state, dismissDrag)
                         Box(Modifier.weight(1f)) {
-                            if (m == SheetMode.Lyrics) LyricsView(remote, state, Modifier.fillMaxSize())
+                            if (m == SheetMode.Lyrics) LyricsView(remote, state, Modifier.fillMaxSize(), anchorTop = 34.dp)
                             else QueuePanel(remote, state, Modifier.fillMaxSize())
                         }
                     }
                 }
             }
-            Column(Modifier.padding(horizontal = 33.dp)) {
-                Spacer(Modifier.height(8.dp))
-                Progress(remote, state)
-                Spacer(Modifier.height(10.dp))
-                Transport(remote, state)
-                Spacer(Modifier.height(25.dp))
-                VolumeRow(remote, state)
-                BottomBar(remote, state, mode, onMode, Modifier.fillMaxWidth())
-                Spacer(Modifier.height(max(nav, 16.dp) + 25.dp))
+            AnimatedVisibility(
+                !(controlsHidden && mode == SheetMode.Lyrics),
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+            ) {
+                Column(Modifier.padding(horizontal = 33.dp)) {
+                    Spacer(Modifier.height(8.dp))
+                    Progress(remote, state)
+                    Spacer(Modifier.height(10.dp))
+                    Transport(remote, state)
+                    Spacer(Modifier.height(25.dp))
+                    VolumeRow(remote, state)
+                    BottomBar(remote, state, mode, onMode, Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(max(nav, 16.dp) + 25.dp))
+                }
             }
         }
     }

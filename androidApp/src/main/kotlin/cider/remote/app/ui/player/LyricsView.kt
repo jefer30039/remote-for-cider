@@ -71,7 +71,13 @@ private sealed interface LyricsLoad {
 }
 
 @Composable
-fun LyricsView(remote: CiderRemote, state: PlayerState, modifier: Modifier = Modifier) {
+fun LyricsView(
+    remote: CiderRemote,
+    state: PlayerState,
+    modifier: Modifier = Modifier,
+    /** La parte de arriba de la línea activa queda a esta distancia del borde de la vista (Apple Music: justo bajo la cabecera). */
+    anchorTop: androidx.compose.ui.unit.Dp? = 48.dp,
+) {
     // Las canciones de la biblioteca traen un id `i.…`; las letras van por el del catálogo.
     val catalogId = state.track?.catalogId
     val load by produceState<LyricsLoad>(LyricsLoad.Loading, catalogId) {
@@ -87,7 +93,7 @@ fun LyricsView(remote: CiderRemote, state: PlayerState, modifier: Modifier = Mod
         when (val l = load) {
             LyricsLoad.Loading -> CircularProgressIndicator(color = Color.White.copy(alpha = 0.6f), strokeWidth = 2.dp)
             LyricsLoad.None -> Text(stringResource(R.string.lyrics_none), style = Apple.type.headline, color = Color.White.copy(alpha = 0.62f))
-            is LyricsLoad.Ready -> if (l.lyrics.synced) SyncedLyrics(remote, state, l.lyrics) else PlainLyrics(l.lyrics)
+            is LyricsLoad.Ready -> if (l.lyrics.synced) SyncedLyrics(remote, state, l.lyrics, anchorTop) else PlainLyrics(l.lyrics)
         }
     }
 }
@@ -105,19 +111,24 @@ private fun PlainLyrics(lyrics: Lyrics) {
 
 @Composable
 private fun lyricStyle() = Apple.type.title1.copy(
-    fontSize = if (LocalWindowLayout.current.expanded) 36.sp else 32.sp,
-    lineHeight = if (LocalWindowLayout.current.expanded) 43.sp else 38.sp,
+    // Medido en Apple Music (teléfono, 521 ppp): mayúsculas de 24,6 dp → 34 sp, renglón de 40 dp.
+    fontSize = if (LocalWindowLayout.current.expanded) 38.sp else 34.sp,
+    lineHeight = if (LocalWindowLayout.current.expanded) 45.sp else 40.sp,
     fontWeight = FontWeight.Bold,
 )
 
-private val SidePadding = 32.dp
-private val LineGap = 18.dp
+/** Margen izquierdo (Apple: 33 dp) y separación entre líneas (Apple: 34–36 dp). */
+private val SidePadding = 33.dp
+private val LineGap = 34.dp
 
 /** La lista sube un poco antes de que empiece la línea (la nueva ya está en su sitio al cantarse). */
 private const val Lead = 0.3
 
-/** Escala de las líneas que no suenan (medido en el vídeo de referencia: 82 %). */
-private const val InactiveScale = 0.82f
+/**
+ * Escala de las líneas que no suenan. En el vídeo de Cider, 82 %; en Apple Music todas miden
+ * igual: un crecimiento sutil conserva la animación sin que las inactivas parezcan pequeñas.
+ */
+private const val InactiveScale = 0.92f
 
 /** Parte aún no cantada de la línea activa, y la línea activa ya terminada. */
 private const val Unsung = 0.45f
@@ -139,7 +150,7 @@ private val WipeEdge = 10.dp
  * activa (sin recomponer). Se puede arrastrar para recorrer la letra; a los 3 s vuelve a seguirla.
  */
 @Composable
-private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics) {
+private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics, anchorTop: androidx.compose.ui.unit.Dp?) {
     val progress = state.progress
     // Reloj de la canción a cada fotograma mientras suena; parado, el último valor.
     val clock = remember { mutableDoubleStateOf(progress.positionNow()) }
@@ -161,13 +172,13 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
     var userMode by remember { mutableStateOf(false) }
     val frozenFocus = remember { mutableFloatStateOf(0f) }
     var touches by remember { mutableIntStateOf(0) }
-    val metrics = remember(lyrics) { LineMetrics(lyrics.lines.size) }
+    val metrics = remember(lyrics, anchorTop) { LineMetrics(lyrics.lines.size, byTop = anchorTop != null) }
     val dragState = rememberDraggableState { delta -> scope.launch { manual.snapTo(manual.value + delta) } }
     LaunchedEffect(userMode, touches) {
         if (!userMode) return@LaunchedEffect
         delay(3000)
         // Mismo sitio visual con el foco de ahora, y vuelta suave a la línea que suena.
-        manual.snapTo(manual.value + metrics.centerAt(focus.value) - metrics.centerAt(frozenFocus.floatValue))
+        manual.snapTo(manual.value + metrics.anchorAt(focus.value) - metrics.anchorAt(frozenFocus.floatValue))
         userMode = false
         manual.animateTo(0f, spring(dampingRatio = 1f, stiffness = 110f))
     }
@@ -177,6 +188,7 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
     val gapPx = with(density) { LineGap.toPx() }
     val sidePx = with(density) { SidePadding.roundToPx() }
     val blurUnit = with(density) { 1.4.dp.toPx() }
+    val anchorTopPx = anchorTop?.let { with(density) { it.toPx() } }
 
     Layout(
         content = {
@@ -213,7 +225,9 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
                 metrics.height[i] = placeables[i].height * s
                 y += (placeables[i].height + gapPx) * s
             }
-            val offset = height * Anchor - metrics.centerAt(f) + manual.value
+            // Teléfono: la parte de arriba de la activa a distancia fija del borde (no se mueve si la
+            // zona crece al ocultarse los controles); tablet: su centro al 38 % del alto.
+            val offset = (anchorTopPx ?: (height * Anchor)) - metrics.anchorAt(f) + manual.value
             for (i in placeables.indices) {
                 val top = metrics.top[i] + offset
                 // Fuera de la vista no se coloca (ni se dibuja).
@@ -234,17 +248,17 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
 }
 
 /** Posiciones de la última colocación (para volver del arrastre sin salto). */
-private class LineMetrics(n: Int) {
+private class LineMetrics(n: Int, private val byTop: Boolean) {
     val top = FloatArray(n)
     val height = FloatArray(n)
 
-    /** Centro de la "línea" [f] (fraccionaria: entre dos líneas, interpolado). */
-    fun centerAt(f: Float): Float {
+    /** Punto de anclaje (arriba o centro) de la "línea" [f] (fraccionaria: entre dos líneas, interpolado). */
+    fun anchorAt(f: Float): Float {
         if (top.isEmpty()) return 0f
         val i = floor(f).toInt().coerceIn(0, top.size - 1)
         val j = (i + 1).coerceAtMost(top.size - 1)
-        val a = top[i] + height[i] / 2
-        val b = top[j] + height[j] / 2
+        val a = top[i] + if (byTop) 0f else height[i] / 2
+        val b = top[j] + if (byTop) 0f else height[j] / 2
         return a + (b - a) * (f - i).coerceIn(0f, 1f)
     }
 }
