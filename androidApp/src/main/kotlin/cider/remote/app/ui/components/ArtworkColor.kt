@@ -69,7 +69,7 @@ private val paletteCache = ConcurrentHashMap<String, List<Color>>()
 
 /**
  * Cuatro colores dominantes de la carátula (k-medias sobre 20 × 20 px), del más al menos
- * presente, ya oscurecidos para el fondo de la hoja (Apple Music: brillo 0,10–0,38).
+ * presente, ajustados al fondo de la hoja como hace Apple Music.
  * Null mientras se calcula; mientras tanto se usa la paleta anterior.
  */
 @Composable
@@ -106,9 +106,10 @@ private suspend fun extractPalette(context: Context, url: String): List<Color>? 
     (0 until 4).filter { counts[it] > 0 }.sortedByDescending { counts[it] }.map { k ->
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(android.graphics.Color.rgb((centers[k][0] * 255).toInt(), (centers[k][1] * 255).toInt(), (centers[k][2] * 255).toInt()), hsv)
-        // Al fondo de Apple: oscuro, algo saturado; los grises se quedan grises.
-        hsv[1] = (hsv[1] * 1.15f).coerceAtMost(0.75f)
-        hsv[2] = 0.12f + hsv[2] * 0.26f
+        // Medido en Apple Music: el color se conserva, con el brillo a ~0,7 (lavanda 0,59 → 0,43;
+        // cielo 0,56 → 0,36) y la saturación algo subida (0,09 → 0,13); los grises siguen grises.
+        hsv[1] = (hsv[1] * 1.3f + 0.02f).coerceAtMost(0.8f)
+        hsv[2] = (hsv[2] * 0.7f).coerceIn(0.1f, 0.5f)
         Color(android.graphics.Color.HSVToColor(hsv))
     }
 }.getOrNull()

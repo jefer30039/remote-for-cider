@@ -221,8 +221,8 @@ private fun ColorField(palette: List<Color>?, fallback: Color, dim: Float) {
             val c = colorAt((i + 1) % 4)
             drawCircle(Brush.radialGradient(listOf(c.copy(alpha = 0.9f), c.copy(alpha = 0f)), Offset(cx, cy), r), r, Offset(cx, cy))
         }
-        // Como en Apple, la parte baja es más oscura.
-        drawRect(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.45f)))
+        // Apenas más oscuro abajo (en Apple el fondo es casi uniforme; el oscurecido lo ponen los colores oscuros de la paleta).
+        drawRect(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.12f)))
         if (dim > 0f) drawRect(Color.Black.copy(alpha = dim))
     })
 }
