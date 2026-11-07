@@ -317,12 +317,13 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             }
         }
 
-        // Desvanecido del contenido bajo las barras flotantes, en vez de un fondo sólido.
+        // Desvanecido del contenido bajo las barras flotantes, en vez de un fondo sólido (suave: hasta el 50 % del color de fondo, 40 % negro en álbum y artista).
         // En la página de álbum el fondo es siempre oscuro: el desvanecido también.
-        val fade = if (route is Route.Collection || route is Route.Artist) Color.Black.copy(alpha = 0.7f) else Apple.colors.background.copy(alpha = 0.9f)
+        // Suave: el vidrio ya se adapta a lo que tiene detrás; antes llegaba al 90 % a mitad de la franja.
+        val fade = if (route is Route.Collection || route is Route.Artist) Color.Black.copy(alpha = 0.4f) else Apple.colors.background.copy(alpha = 0.5f)
         Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom)
-                .background(Brush.verticalGradient(0f to Color.Transparent, 0.6f to fade)),
+                .background(Brush.verticalGradient(0.25f to Color.Transparent, 1f to fade)),
         )
 
         // Teléfono: el ⋮ de las raíces queda fijo arriba a la derecha, a la altura del título grande.
