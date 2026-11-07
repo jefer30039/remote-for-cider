@@ -15,7 +15,7 @@ Control remoto nativo para Android de [Cider](https://cider.sh), el cliente de A
 - **A continuación**: ver la cola, reordenar arrastrando y quitar deslizando.
 - **Biblioteca**: pins, playlists, artistas, álbumes, canciones y agregados recientemente; desliza una canción a la derecha para reproducirla a continuación o al final.
 - **Inicio y búsqueda**: tus recomendaciones de Apple Music, búsqueda en el catálogo y categorías.
-- **Letras sincronizadas**.
+- **Letras sincronizadas**, resaltadas palabra a palabra mientras se cantan cuando Apple Music tiene los tiempos por palabra.
 - **Diseño para tablet** con barra de pestañas arriba, barra lateral y páginas de álbum a dos columnas.
 - **Encuentra la computadora sola** en la red local, incluido el hotspot del teléfono, así que sigue funcionando aunque cambie la IP.
 - En inglés y español.

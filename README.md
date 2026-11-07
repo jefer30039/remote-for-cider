@@ -15,7 +15,7 @@ A native Android remote for [Cider](https://cider.sh), the Apple Music desktop c
 - **Up Next**: see the queue, drag to reorder, swipe to remove.
 - **Library**: pins, playlists, artists, albums, songs and recently added; swipe a song right to play it next or last.
 - **Home and Search**: your Apple Music recommendations, catalog search and browse categories.
-- **Synced lyrics**.
+- **Synced lyrics**, highlighted word by word as they are sung when Apple Music has word timing.
 - **Tablet layout** with a top tab bar, sidebar and two-column album pages.
 - **Finds your computer automatically** on the local network, including your phone's hotspot, so it keeps working when the computer's IP changes.
 - English and Spanish.
