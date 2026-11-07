@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Search
@@ -29,6 +30,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cider.remote.app.app
@@ -44,6 +50,7 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
     val searching by session.searching.collectAsStateWithLifecycle()
     var menu by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    var about by remember { mutableStateOf(false) }
     Box {
         GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), onClick = { menu = true },
             tint = tint?.invoke() ?: Apple.colors.label, backdrop = backdrop ?: LocalGlassBackdrop.current)
@@ -68,9 +75,43 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
                 leadingIcon = { Icon(Icons.Filled.LinkOff, null) },
                 onClick = { menu = false; onForget() },
             )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.about_title)) },
+                leadingIcon = { Icon(Icons.Outlined.Info, null) },
+                onClick = { menu = false; about = true },
+            )
         }
     }
     if (editing) HostDialog(host, onDismiss = { editing = false }, onSave = { session.changeHost(it); editing = false })
+    if (about) AboutDialog(onDismiss = { about = false })
+}
+
+const val SOURCE_URL = "https://github.com/jefer30039/remote-for-cider"
+
+/** Versión, aviso de proyecto no oficial y enlace al código. */
+@Composable
+private fun AboutDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.about_version, version)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.about_disclaimer))
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    stringResource(R.string.about_source),
+                    color = Apple.colors.accent,
+                    modifier = Modifier.clickable { uriHandler.openUri(SOURCE_URL) },
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+    )
 }
 
 @Composable

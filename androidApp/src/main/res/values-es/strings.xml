@@ -30,8 +30,13 @@
     <string name="connection_address_title">Dirección del PC</string>
     <string name="connection_address_label">IP o nombre</string>
     <string name="connection_address_hint">Se conserva el emparejamiento; no hace falta aprobar de nuevo en Cider.</string>
+    <string name="about_title">Acerca de</string>
+    <string name="about_version">Remote for Cider %1$s</string>
+    <string name="about_disclaimer">Proyecto no oficial y de código abierto. No está afiliado ni respaldado por Cider Collective ni por Apple. Cider es una marca de Cider Collective; Apple Music es una marca de Apple Inc.</string>
+    <string name="about_source">Código fuente y licencia en GitHub</string>
     <string name="action_save">Guardar</string>
     <string name="action_cancel">Cancelar</string>
+    <string name="action_close">Cerrar</string>
 
     <!-- Estado -->
     <string name="status_not_playing">Nada sonando</string>
