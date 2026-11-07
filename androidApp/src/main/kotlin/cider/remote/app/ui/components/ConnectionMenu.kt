@@ -13,6 +13,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
+import cider.remote.app.data.UpdateChecker
+import cider.remote.app.data.UpdateStatus
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Search
@@ -51,6 +61,9 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
     var menu by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var about by remember { mutableStateOf(false) }
+    val updates = LocalContext.current.app.updates
+    val updateStatus by updates.status.collectAsStateWithLifecycle(UpdateStatus(true, 0L, null))
+    val uriHandler = LocalUriHandler.current
     Box {
         GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), onClick = { menu = true },
             tint = tint?.invoke() ?: Apple.colors.label, backdrop = backdrop ?: LocalGlassBackdrop.current)
@@ -75,6 +88,13 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
                 leadingIcon = { Icon(Icons.Filled.LinkOff, null) },
                 onClick = { menu = false; onForget() },
             )
+            updateStatus.update?.let { update ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.update_available, update.version), color = Apple.colors.accent) },
+                    leadingIcon = { Icon(Icons.Outlined.SystemUpdate, null, tint = Apple.colors.accent) },
+                    onClick = { menu = false; uriHandler.openUri(update.pageUrl) },
+                )
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.about_title)) },
                 leadingIcon = { Icon(Icons.Outlined.Info, null) },
@@ -83,22 +103,20 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
         }
     }
     if (editing) HostDialog(host, onDismiss = { editing = false }, onSave = { session.changeHost(it); editing = false })
-    if (about) AboutDialog(onDismiss = { about = false })
+    if (about) AboutDialog(updates, updateStatus, onDismiss = { about = false })
 }
 
-const val SOURCE_URL = "https://github.com/jefer30039/remote-for-cider"
-
-/** Versión, aviso de proyecto no oficial y enlace al código. */
+/** Versión, aviso de proyecto no oficial, enlace al código y actualizaciones. */
 @Composable
-private fun AboutDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
+private fun AboutDialog(updates: UpdateChecker, status: UpdateStatus, onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
-    val version = remember {
-        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
-    }
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    // null = sin resultado todavía; true/false = resultado de "Comprobar ahora"
+    var checked by remember { mutableStateOf<Boolean?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.about_version, version)) },
+        title = { Text(stringResource(R.string.about_version, updates.installedVersion)) },
         text = {
             Column {
                 Text(stringResource(R.string.about_disclaimer))
@@ -106,8 +124,38 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                 Text(
                     stringResource(R.string.about_source),
                     color = Apple.colors.accent,
-                    modifier = Modifier.clickable { uriHandler.openUri(SOURCE_URL) },
+                    modifier = Modifier.clickable { uriHandler.openUri(UpdateChecker.REPO_URL) },
                 )
+                Spacer(Modifier.height(16.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.update_toggle))
+                        Text(stringResource(R.string.update_toggle_hint), color = Apple.colors.secondaryLabel, style = Apple.type.footnote)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(checked = status.enabled, onCheckedChange = { scope.launch { updates.setEnabled(it) } })
+                }
+                if (status.enabled) {
+                    Spacer(Modifier.height(12.dp))
+                    val update = status.update
+                    when {
+                        update != null -> Text(
+                            stringResource(R.string.update_download, update.version),
+                            color = Apple.colors.accent,
+                            modifier = Modifier.clickable { uriHandler.openUri(update.pageUrl) },
+                        )
+                        checked == false -> Text(stringResource(R.string.update_check_failed), color = Apple.colors.secondaryLabel)
+                        checked == true -> Text(stringResource(R.string.update_up_to_date), color = Apple.colors.secondaryLabel)
+                        else -> Text(
+                            stringResource(R.string.update_check_now),
+                            color = if (checking) Apple.colors.secondaryLabel else Apple.colors.accent,
+                            modifier = Modifier.clickable(enabled = !checking) {
+                                checking = true
+                                scope.launch { checked = updates.checkNow(); checking = false }
+                            },
+                        )
+                    }
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },

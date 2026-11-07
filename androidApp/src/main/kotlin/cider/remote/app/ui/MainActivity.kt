@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
     private fun Root() {
         val session = app.session
         val state by session.state.collectAsStateWithLifecycle()
+        LaunchedEffect(Unit) { app.updates.checkIfDue() }
         when (val s = state) {
             SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()

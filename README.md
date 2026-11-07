@@ -67,7 +67,7 @@ Each folder has an uninstall script.
 
 ### 2. Install the app
 
-Download the APK from [Releases](../../releases) and open it on your phone (allow installing from your browser or file manager when asked).
+Download the APK from [Releases](../../releases) and open it on your phone (allow installing from your browser or file manager when asked). The app checks GitHub once a day for a newer release and shows it in the ⋮ menu; you can turn this off in **About**. Apps like Obtainium can also follow the releases for you.
 
 ### 3. Pair
 
@@ -78,7 +78,7 @@ Open the app. It looks for Cider on your network and fills in the address. Tap *
 - Controlling Cider requires the token Cider gives the app when you approve it.
 - Cider's live events (what's playing) don't require a token, so with the bridge running anyone on the same network can see what you're listening to. On laptops that join public Wi-Fi, bind the bridge to your home interface or uninstall it.
 - Traffic between the app and the bridge is plain HTTP on your local network.
-- The app talks only to your computer. Artwork and videos load from Apple's servers.
+- The app talks only to your computer. Artwork and videos load from Apple's servers. The daily update check asks GitHub for the latest release (your IP is visible to GitHub, nothing else is sent); it can be disabled in **About**.
 
 ## Optional: EasyEffects bass toggle (Linux)
 

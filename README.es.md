@@ -67,7 +67,7 @@ Cada carpeta tiene su script para desinstalar.
 
 ### 2. Instalar la app
 
-Descarga el APK desde [Releases](../../releases) y ábrelo en el teléfono (permite instalar desde el navegador o el gestor de archivos cuando lo pida).
+Descarga el APK desde [Releases](../../releases) y ábrelo en el teléfono (permite instalar desde el navegador o el gestor de archivos cuando lo pida). La app consulta GitHub una vez al día y, si hay una versión nueva, la avisa en el menú ⋮; se puede desactivar en **Acerca de**. Apps como Obtainium también pueden seguir las releases por ti.
 
 ### 3. Emparejar
 
@@ -78,7 +78,7 @@ Abre la app. Busca Cider en tu red y rellena la dirección. Toca **Conectar** y 
 - Para controlar Cider hace falta el token que Cider le da a la app cuando la apruebas.
 - Los eventos en vivo de Cider (qué está sonando) no piden token, así que con el puente activo cualquiera en la misma red puede ver qué escuchas. En laptops que se conectan a Wi-Fi públicas, ata el puente a la interfaz de casa o desinstálalo.
 - El tráfico entre la app y el puente es HTTP sin cifrar dentro de tu red local.
-- La app solo habla con tu computadora. Las carátulas y los vídeos se cargan de los servidores de Apple.
+- La app solo habla con tu computadora. Las carátulas y los vídeos se cargan de los servidores de Apple. La comprobación diaria de actualizaciones pregunta a GitHub por la última release (GitHub ve tu IP, no se envía nada más); se desactiva en **Acerca de**.
 
 ## Opcional: graves con EasyEffects (Linux)
 

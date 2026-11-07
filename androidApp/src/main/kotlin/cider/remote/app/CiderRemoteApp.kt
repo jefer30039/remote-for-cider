@@ -4,6 +4,7 @@ import android.app.Application
 import cider.remote.app.data.ConnectionStore
 import cider.remote.app.data.ContentCache
 import cider.remote.app.data.PcFinder
+import cider.remote.app.data.UpdateChecker
 import cider.remote.app.session.RemoteSession
 import cider.remote.ciderHttpClient
 
@@ -12,6 +13,7 @@ class CiderRemoteApp : Application() {
     val connections by lazy { ConnectionStore(this) }
     val contentCache by lazy { ContentCache(this) }
     val pcFinder by lazy { PcFinder(this, http) }
+    val updates by lazy { UpdateChecker(this, http) }
     val session by lazy { RemoteSession(http, connections, contentCache, pcFinder) }
 }
 

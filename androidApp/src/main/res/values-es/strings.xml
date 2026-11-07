@@ -34,6 +34,13 @@
     <string name="about_version">Remote for Cider %1$s</string>
     <string name="about_disclaimer">Proyecto no oficial y de código abierto. No está afiliado ni respaldado por Cider Collective ni por Apple. Cider es una marca de Cider Collective; Apple Music es una marca de Apple Inc.</string>
     <string name="about_source">Código fuente y licencia en GitHub</string>
+    <string name="update_available">Actualización disponible: %1$s</string>
+    <string name="update_download">Descargar %1$s en GitHub</string>
+    <string name="update_up_to_date">Tienes la última versión.</string>
+    <string name="update_check_failed">No se pudo consultar GitHub.</string>
+    <string name="update_check_now">Comprobar ahora</string>
+    <string name="update_toggle">Comprobar actualizaciones a diario</string>
+    <string name="update_toggle_hint">Consulta GitHub una vez al día por la última versión. No se envía nada más.</string>
     <string name="action_save">Guardar</string>
     <string name="action_cancel">Cancelar</string>
     <string name="action_close">Cerrar</string>
