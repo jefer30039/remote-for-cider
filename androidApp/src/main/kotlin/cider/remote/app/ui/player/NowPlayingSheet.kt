@@ -500,7 +500,7 @@ private val CompactHeaderHeight = 120.dp
  * del modelo 7/255 (con un solo desenfoque ancho, 12; estirando la última franja, peor aún).
  * El vídeo (un TextureView) se graba en una capa y se vuelve a dibujar con su reflejo en dos
  * capas a 1/4 de resolución; encima, el vídeo nítido se funde entre el 76 % y el 92 % de su alto
- * y un velo oscuro crece desde el borde del vídeo hasta ~0,37 abajo (Apple no oscurece el vídeo).
+ * (en arco, ver [BlurArcCenter]) y un velo oscuro crece desde el borde del vídeo hasta ~0,37 abajo (Apple no oscurece el vídeo).
  */
 @Composable
 private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModifier: Modifier) {
@@ -522,7 +522,13 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModif
                 }
                 val nearBlur = blur(MirrorNearSigma)
                 val farBlur = blur(MirrorFarSigma)
-                val nearMask = fade(0.85f * vh / h, 1.2f * vh / h, from = 1f, to = 0f, steps = 40)
+                // La suave se va en arco, con el mismo centro que el fundido del vídeo: en el eje, del 85 %
+                // al 120 % del alto del vídeo.
+                val nearMask = Brush.radialGradient(
+                    *fadeStops((0.85f - BlurArcCenter) / (1.2f - BlurArcCenter), 1f, from = 1f, to = 0f, steps = 40),
+                    center = Offset(w * k / 2f, vh * k * BlurArcCenter),
+                    radius = vh * k * (1.2f - BlurArcCenter),
+                )
                 // El propio vídeo (bajo su fundido queda su versión desenfocada, alineada) y su reflejo
                 // estirado: la fila y del vídeo cae en vh + (vh − y) · estirado.
                 val reflected: DrawScope.() -> Unit = {
@@ -547,9 +553,14 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModif
                         reflected()
                         drawRect(nearMask, blendMode = BlendMode.DstIn)
                     }
-                    scale(1f / k, 1f / k, pivot = Offset.Zero) {
-                        drawLayer(far)
-                        drawLayer(near)
+                    // Solo donde se ven: por encima del 60 % del alto el vídeo nítido las tapa del todo (el arco
+                    // de su fundido llega al 62 % en los bordes) y la suave acaba en el 120 % (mezclarlas a
+                    // pantalla completa es lo que más cuesta).
+                    clipRect(top = vh * 0.6f) {
+                        scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(far) }
+                    }
+                    clipRect(top = vh * 0.6f, bottom = vh * 1.2f) {
+                        scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(near) }
                     }
                 }
             },
@@ -558,7 +569,13 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModif
             Modifier.fillMaxWidth().height(height).then(dragModifier)
                 .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
                 .drawWithCache {
-                    val mask = fade(0.76f, 0.92f, from = 1f, to = 0f, steps = 50)
+                    // En arco: círculo centrado al 20 % del alto; en el eje se funde del 76 % al 92 % y en
+                    // los bordes unos 11 puntos más arriba.
+                    val mask = Brush.radialGradient(
+                        *fadeStops((0.76f - BlurArcCenter) / (0.92f - BlurArcCenter), 1f, from = 1f, to = 0f, steps = 50),
+                        center = Offset(size.width / 2f, size.height * BlurArcCenter),
+                        radius = size.height * (0.92f - BlurArcCenter),
+                    )
                     onDrawWithContent {
                         videoLayer.record { this@onDrawWithContent.drawContent() }
                         drawLayer(videoLayer)
@@ -604,18 +621,28 @@ private const val MirrorNearSigma = 0.035f
 private const val MirrorFarSigma = 0.22f
 
 /**
+ * El desenfoque no empieza en una línea recta sino en un arco de círculo, más arriba en los lados
+ * que en el centro (medido en un vídeo de Apple Music con "SOS" de SZA: la nitidez cae al 30 % en
+ * el 77 % del alto del vídeo en los bordes y en el 87 % en el centro; encaja un círculo centrado
+ * en el eje, al 20 % del alto). Centro del círculo como fracción del alto del vídeo.
+ */
+private const val BlurArcCenter = 0.2f
+
+/**
  * Máscara vertical de opacidad [from] a [to] entre las fracciones [a] y [b] del alto, con
  * curva suave (con tramos rectos se ve una línea donde cambia la pendiente).
  */
-private fun fade(a: Float, b: Float, from: Float, to: Float, steps: Int = 16): Brush {
-    val stops = Array(steps + 1) { i ->
+private fun fade(a: Float, b: Float, from: Float, to: Float, steps: Int = 16): Brush =
+    Brush.verticalGradient(*fadeStops(a, b, from, to, steps))
+
+/** Los tramos de [fade], para usarlos también en un degradado radial (fracciones del radio). */
+private fun fadeStops(a: Float, b: Float, from: Float, to: Float, steps: Int = 16): Array<Pair<Float, Color>> =
+    Array(steps + 1) { i ->
         val t = i / steps.toFloat()
         val x = if (b <= a) (if (t >= a) 1f else 0f) else ((t - a) / (b - a)).coerceIn(0f, 1f)
         val e = x * x * (3 - 2 * x)
         t to Color.Black.copy(alpha = (from + (to - from) * e).coerceIn(0f, 1f))
     }
-    return Brush.verticalGradient(*stops)
-}
 
 @Composable
 private fun CompactHeader(
