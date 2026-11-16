@@ -28,6 +28,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -488,58 +490,81 @@ private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode
 private val CompactHeaderHeight = 120.dp
 
 /**
- * Portada animada a todo el ancho (3:4) con lo que Apple Music pone debajo: la última franja
- * del vídeo estirada hasta el borde de la pantalla y desenfocada, en tiempo real (en "Coloratura"
- * de Coldplay se ve el color de un planeta que pasa por abajo bajar como un reguero hasta el
- * final). El vídeo (un TextureView) se graba en una capa y se vuelve a dibujar estirado a 1/4
- * de resolución con un desenfoque muy ancho (queda un color casi liso que cambia con el vídeo);
- * encima el vídeo se funde y un velo oscuro cubre de la mitad del vídeo hacia abajo.
+ * Portada animada a todo el ancho (3:4) con lo que Apple Music pone debajo: la parte baja del
+ * vídeo **reflejada** en su borde inferior y estirada, con un desenfoque que crece hacia abajo,
+ * en tiempo real. Ajustado a una captura de Apple Music ("Mercury" de Steve Lacy, 2026-11-16)
+ * con el fotograma original del vídeo: reflejo estirado ×1,8; junto al vídeo un desenfoque suave
+ * (σ ≈ 0,035 × ancho: la camiseta blanca del final del vídeo se sigue reconociendo) que entre el
+ * 85 % y el 120 % del alto del vídeo pasa a uno muy ancho (σ ≈ 0,22 × ancho: abajo queda el rojo
+ * de la cara, no el gris de la última franja, que es lo que daba estirar solo el borde). Error
+ * del modelo 7/255 (con un solo desenfoque ancho, 12; estirando la última franja, peor aún).
+ * El vídeo (un TextureView) se graba en una capa y se vuelve a dibujar con su reflejo en dos
+ * capas a 1/4 de resolución; encima, el vídeo nítido se funde entre el 76 % y el 92 % de su alto
+ * y un velo oscuro crece desde el borde del vídeo hasta ~0,37 abajo (Apple no oscurece el vídeo).
  */
 @Composable
 private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModifier: Modifier) {
     val videoLayer = rememberGraphicsLayer()
-    val stretched = rememberGraphicsLayer()
-    val density = LocalDensity.current
-    // Se dibuja a 1/4: el desenfoque efectivo es 4 veces el indicado (≈ 200 dp en horizontal, 96 dp en
-    // vertical). Medido en Apple Music: bajo el vídeo apenas hay variación a lo ancho (desviación 0–1
-    // sobre 255 en "SOS"), es un color casi liso que cambia con el vídeo, no regueros.
-    val blur = remember(density) { with(density) { BlurEffect(50.dp.toPx(), 24.dp.toPx(), TileMode.Clamp) } }
+    val near = rememberGraphicsLayer()
+    val far = rememberGraphicsLayer()
     Box(Modifier.fillMaxSize()) {
         Spacer(
-            Modifier.fillMaxSize().drawBehind {
-                val k = 0.25f
+            Modifier.fillMaxSize().drawWithCache {
+                val k = MirrorScale
                 val w = size.width
                 val h = size.height
                 val vh = height.toPx()
-                if (vh >= h || w <= 0f) return@drawBehind
-                val strip = vh * 0.05f
                 val small = IntSize((w * k).roundToInt().coerceAtLeast(1), (h * k).roundToInt().coerceAtLeast(1))
-                stretched.renderEffect = blur
-                stretched.record(small) {
+                // La capa va a 1/4 y el radio de BlurEffect se convierte en σ = 0,577 · radio + 0,5.
+                fun blur(sigma: Float): BlurEffect {
+                    val radius = ((w * sigma * k - 0.5f) / 0.57735f).coerceAtLeast(1f)
+                    return BlurEffect(radius, radius, TileMode.Clamp)
+                }
+                val nearBlur = blur(MirrorNearSigma)
+                val farBlur = blur(MirrorFarSigma)
+                val nearMask = fade(0.85f * vh / h, 1.2f * vh / h, from = 1f, to = 0f, steps = 40)
+                // El propio vídeo (bajo su fundido queda su versión desenfocada, alineada) y su reflejo
+                // estirado: la fila y del vídeo cae en vh + (vh − y) · estirado.
+                val reflected: DrawScope.() -> Unit = {
                     scale(k, k, pivot = Offset.Zero) {
-                        // El propio vídeo (para que bajo su fundido haya una versión desenfocada alineada)…
                         clipRect(0f, 0f, w, vh) { drawLayer(videoLayer) }
-                        // …y su última franja estirada hasta abajo.
                         clipRect(0f, vh, w, h) {
                             withTransform({
-                                translate(0f, vh)
-                                scale(1f, (h - vh) / strip, pivot = Offset.Zero)
-                                translate(0f, -(vh - strip))
+                                translate(0f, vh * (1f + MirrorStretch))
+                                scale(1f, -MirrorStretch, pivot = Offset.Zero)
                             }) { drawLayer(videoLayer) }
                         }
                     }
                 }
-                scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(stretched) }
+                onDrawBehind {
+                    if (vh >= h || w <= 0f) return@onDrawBehind
+                    far.renderEffect = farBlur
+                    far.record(small) { reflected() }
+                    // La capa suave solo se ve junto al vídeo: se recorta antes de desenfocarla.
+                    near.renderEffect = nearBlur
+                    near.compositingStrategy = androidx.compose.ui.graphics.layer.CompositingStrategy.Offscreen
+                    near.record(small) {
+                        reflected()
+                        drawRect(nearMask, blendMode = BlendMode.DstIn)
+                    }
+                    scale(1f / k, 1f / k, pivot = Offset.Zero) {
+                        drawLayer(far)
+                        drawLayer(near)
+                    }
+                }
             },
         )
         Box(
             Modifier.fillMaxWidth().height(height).then(dragModifier)
                 .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
-                .drawWithContent {
-                    videoLayer.record { this@drawWithContent.drawContent() }
-                    drawLayer(videoLayer)
-                    // Solo el último quinto: debajo está su versión desenfocada, alineada.
-                    drawRect(Brush.verticalGradient(0.78f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                .drawWithCache {
+                    val mask = fade(0.76f, 0.92f, from = 1f, to = 0f, steps = 50)
+                    onDrawWithContent {
+                        videoLayer.record { this@onDrawWithContent.drawContent() }
+                        drawLayer(videoLayer)
+                        // Debajo está su versión desenfocada, alineada.
+                        drawRect(mask, blendMode = BlendMode.DstIn)
+                    }
                 },
         ) {
             AnimatedCover(video, Modifier.fillMaxSize()) {
@@ -557,16 +582,26 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModif
                 )
             }
         }
-        // Velo oscuro desde la mitad del vídeo hacia abajo, como Apple Music ("SOS" y "Coloratura": abajo queda a ~0,7
-        // del brillo del mar, un azul marino casi liso).
+        // Velo oscuro del borde del vídeo hacia abajo, casi lineal (tramo central de la curva): ~0,18 a media
+        // altura de lo que queda y ~0,37 en el borde de la pantalla.
         Spacer(
-            Modifier.fillMaxSize().drawBehind {
+            Modifier.fillMaxSize().drawWithCache {
                 val vh = height.toPx() / size.height
-                drawRect(fade(vh * 0.45f, vh.coerceAtMost(1f), from = 0f, to = 0.3f))
+                val veil = fade(vh * 0.85f, 1.2f, from = 0f, to = 0.48f, steps = 24)
+                onDrawBehind { if (vh < 1f) drawRect(veil) }
             },
         )
     }
 }
+
+/**
+ * Reflejo bajo la portada animada: resolución de las capas, estirado vertical y σ de los dos
+ * desenfoques (× ancho): el suave de junto al vídeo y el ancho de abajo.
+ */
+private const val MirrorScale = 0.25f
+private const val MirrorStretch = 1.8f
+private const val MirrorNearSigma = 0.035f
+private const val MirrorFarSigma = 0.22f
 
 /**
  * Máscara vertical de opacidad [from] a [to] entre las fracciones [a] y [b] del alto, con
