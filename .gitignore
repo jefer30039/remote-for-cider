@@ -17,3 +17,6 @@ docs/referencia/
 *.keystore
 keystore.properties
 puente/
+
+# Configuración local de Claude Code
+.claude/

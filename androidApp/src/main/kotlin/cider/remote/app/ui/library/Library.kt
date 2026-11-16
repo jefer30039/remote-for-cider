@@ -57,6 +57,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -531,7 +532,11 @@ private suspend fun <T> allPages(load: suspend (offset: Int) -> Page<T>): List<T
 
 // ---------- Álbum / playlist ----------
 
-private data class TrackRow(val type: String, val id: String, val number: Int?, val title: String, val artist: String?, val durationMs: Long?, val artwork: Artwork?)
+private data class TrackRow(
+    val type: String, val id: String, val number: Int?, val title: String, val artist: String?, val durationMs: Long?, val artwork: Artwork?,
+    /** Falso en las canciones del catálogo aún no disponibles (sin `playParams`): se ven atenuadas y no se tocan. */
+    val available: Boolean = true,
+)
 
 private suspend fun CiderApi.tracks(c: Route.Collection): List<TrackRow> = when (c.kind) {
     "library-albums" -> allPages { albumSongs(c.id, it, MAX_PAGE) }
@@ -539,7 +544,7 @@ private suspend fun CiderApi.tracks(c: Route.Collection): List<TrackRow> = when 
     "library-playlists" -> allPages { playlistSongs(c.id, it, MAX_PAGE) }
         .map { TrackRow("library-songs", it.id, null, it.name, it.artistName, it.durationMs, it.artwork) }
     else -> catalogTracks(c.kind, c.id).mapIndexed { i, t ->
-        TrackRow(t.type, t.id, i + 1, t.name, t.attributes?.artistName, t.attributes?.durationInMillis, t.artwork)
+        TrackRow(t.type, t.id, i + 1, t.name, t.attributes?.artistName, t.attributes?.durationInMillis, t.artwork, available = t.attributes?.playParams != null)
     }
 }
 
@@ -646,7 +651,8 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
             // arranca en la primera y saltar después se oye). Así que: reproducir la canción
             // tocada y encolar detrás las siguientes, en orden (ver CiderRemote.playThenQueue).
             val chosen = list[startAt]
-            remote.playThenQueue(chosen.type, chosen.id, list.drop(startAt + 1).take(MAX_FOLLOWING).map { it.type to it.id })
+            if (!chosen.available) return@runCatching
+            remote.playThenQueue(chosen.type, chosen.id, list.drop(startAt + 1).filter { it.available }.take(MAX_FOLLOWING).map { it.type to it.id })
         }
     }
     LightStatusBarIcons()
@@ -725,12 +731,14 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                 else -> items(list.size) { i ->
                     val t = list[i]
                     var rowMenu by remember { mutableStateOf(false) }
-                    Box(Modifier.offset(y = listOverlap)) {
-                        QueueSwipe(remote, t.type, t.id) { ListRow(
+                    // No disponibles (Apple Music): atenuadas, sin toque, deslizamiento ni menú.
+                    Box(Modifier.offset(y = listOverlap).then(if (t.available) Modifier else Modifier.alpha(0.4f))) {
+                        QueueSwipe(remote, t.type, t.id, enabled = t.available) { ListRow(
                             title = t.title,
                             titleStyle = Apple.type.callout,
                             titleColor = Color.White,
-                            subtitle = if (route.isPlaylist) t.artist else null,
+                            // En playlists siempre; en álbumes, cuando la canción es de otro artista (recopilaciones).
+                            subtitle = if (route.isPlaylist || (t.artist != null && t.artist != route.subtitle)) t.artist else null,
                             leading = {
                                 if (route.isPlaylist) ArtworkImage(t.artwork, 44.dp, shape = RoundedCornerShape(4.dp))
                                 else Text(
@@ -748,11 +756,11 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                                         Text(formatTime(it / 1000.0), style = Apple.type.subhead.copy(fontSize = Apple.type.footnote.fontSize),
                                             color = Color.White.copy(alpha = 0.55f), modifier = Modifier.padding(end = 12.dp))
                                     }
-                                    MoreButton(Color.White.copy(alpha = 0.8f)) { rowMenu = true }
+                                    MoreButton(Color.White.copy(alpha = 0.8f)) { if (t.available) rowMenu = true }
                                 }
                             },
-                            onClick = { play(false, startAt = i) },
-                            onLongClick = { rowMenu = true },
+                            onClick = if (t.available) ({ play(false, startAt = i) }) else null,
+                            onLongClick = if (t.available) ({ rowMenu = true }) else null,
                         ) }
                         Box(Modifier.align(Alignment.TopEnd)) { PlayMenu(remote, rowMenu, { rowMenu = false }, t.type, t.id) }
                     }

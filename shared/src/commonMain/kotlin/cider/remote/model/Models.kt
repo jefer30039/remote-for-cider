@@ -229,6 +229,8 @@ data class AmAttributes(
     val artwork: Artwork? = null,
     val durationInMillis: Long? = null,
     val releaseDate: String? = null,
+    /** Sin esto Apple no deja reproducirla (canciones aún no publicadas: "Track 3" / "Unknown"). */
+    val playParams: PlayParams? = null,
 )
 
 @Serializable

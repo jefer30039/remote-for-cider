@@ -1,5 +1,19 @@
 package cider.remote.app.ui.player
 
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.expandVertically
@@ -166,6 +180,13 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
 
     BackHandler(enabled = sheet.isOpen) { if (mode != SheetMode.Artwork) mode = SheetMode.Artwork else sheet.close() }
     LightStatusBarIcons()
+    // Con la letra a la vista la pantalla no se apaga (como Apple Music).
+    val view = LocalView.current
+    DisposableEffect(view, mode) {
+        val lyrics = mode == SheetMode.Lyrics
+        if (lyrics) view.keepScreenOn = true
+        onDispose { if (lyrics) view.keepScreenOn = false }
+    }
 
     val dismissDrag = Modifier.sheetDrag(sheet)
     val corner = if (sheet.position.value > 0f) 24.dp else 0.dp
@@ -186,6 +207,7 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         // Fondo: campo de colores de la carátula con animación lenta (Apple Music), también en tablet;
         // con letra o cola, más oscuro. Con portada animada a la vista, Apple no anima el fondo: queda el
         // color plano de la carátula (el degradado de la caja), y el vídeo se funde en él.
+        // Con portada animada a la vista no hay campo: debajo va el borde del vídeo estirado (HeroArtwork).
         if (video == null || mode != SheetMode.Artwork) {
             ColorField(palette, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         }
@@ -284,12 +306,42 @@ private fun PhoneSheet(
         val width = maxWidth
         // Portada animada: 3:4 a todo el ancho, detrás de todo y fundida con el fondo.
         AnimatedVisibility(mode == SheetMode.Artwork && video != null, enter = fadeIn(), exit = fadeOut()) {
-            HeroArtwork(state.track?.artwork, video, background, width * 4 / 3, dismissDrag)
+            HeroArtwork(state.track?.artwork, video, width * 4 / 3, dismissDrag)
         }
         Column(Modifier.fillMaxSize()) {
-            AnimatedContent(mode, Modifier.weight(1f).fillMaxWidth(), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "modo") { m ->
+            // La carátula pasa de la cabecera pequeña (letra/cola) a la tarjeta grande y vuelve
+            // creciendo/encogiéndose en su sitio; el resto se funde.
+            SharedTransitionLayout(Modifier.weight(1f).fillMaxWidth()) {
+            AnimatedContent(mode, Modifier.fillMaxSize(), transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(200)) }, label = "modo") { m ->
+                val shared = Modifier.sharedElement(
+                    rememberSharedContentState("caratula"), this@AnimatedContent,
+                    boundsTransform = { _, _ -> spring(dampingRatio = 0.86f, stiffness = 320f) },
+                )
                 when (m) {
-                    SheetMode.Artwork -> Column(Modifier.fillMaxSize()) {
+                    SheetMode.Artwork -> Box(Modifier.fillMaxSize()) {
+                    // Con portada animada no hay tarjeta: la carátula pequeña vuela hasta el sitio del vídeo
+                    // (y vuelve desde él). Solo se ve durante la transición; en reposo se ve el vídeo de detrás.
+                    if (video != null) {
+                        val running = this@AnimatedContent.transition.isRunning
+                        val heroPx = with(LocalDensity.current) { (width * 4 / 3).roundToPx() }
+                        Box(
+                            Modifier.layout { measurable, c ->
+                                val p = measurable.measure(Constraints.fixed(c.maxWidth, heroPx))
+                                layout(c.maxWidth, minOf(heroPx, c.maxHeight)) { p.place(0, 0) }
+                            }.graphicsLayer { alpha = if (running) 1f else 0f }.then(shared)
+                                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                                .drawWithContent {
+                                    drawContent()
+                                    drawRect(Brush.verticalGradient(0.7f to Color.Black, 1f to Color.Transparent), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+                                },
+                        ) {
+                            AsyncImage(
+                                model = state.track?.artwork?.sized(HeroArtworkPx), contentDescription = null,
+                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                    Column(Modifier.fillMaxSize()) {
                         // Sin vídeo, tarjeta centrada a 24 dp de los lados y 44 dp sobre el título.
                         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().then(dismissDrag).statusBarsPadding()) {
                             if (video == null) {
@@ -298,7 +350,7 @@ private fun PhoneSheet(
                                 val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
                                 ArtworkImage(
                                     state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp)
+                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp).then(shared)
                                         .graphicsLayer { scaleX = scale; scaleY = scale }
                                         .shadow(24.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black),
                                 )
@@ -306,14 +358,36 @@ private fun PhoneSheet(
                         }
                         Box(Modifier.padding(start = 33.dp, end = 22.dp)) { TitleRow(remote, state) }
                     }
-                    SheetMode.Lyrics, SheetMode.Queue -> Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                        CompactHeader(remote, state, dismissDrag)
-                        Box(Modifier.weight(1f)) {
-                            if (m == SheetMode.Lyrics) LyricsView(remote, state, Modifier.fillMaxSize(), anchorTop = 34.dp)
-                            else QueuePanel(remote, state, Modifier.fillMaxSize())
+                    }
+                    SheetMode.Lyrics, SheetMode.Queue -> Box(Modifier.fillMaxSize()) {
+                        val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                        if (m == SheetMode.Lyrics) {
+                            // La letra sube por debajo de la cabecera y se desvanece al llegar a ella (Apple
+                            // Music): la vista empieza arriba y la línea activa queda donde estaba.
+                            val fadeFrom = with(LocalDensity.current) { (statusTop + 72.dp).toPx() }
+                            val fadeTo = with(LocalDensity.current) { (statusTop + CompactHeaderHeight + 14.dp).toPx() }
+                            LyricsView(
+                                remote, state,
+                                Modifier.fillMaxSize()
+                                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                                    .drawWithContent {
+                                        drawContent()
+                                        drawRect(
+                                            Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = fadeFrom, endY = fadeTo),
+                                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                                        )
+                                    },
+                                anchorTop = statusTop + CompactHeaderHeight + 34.dp,
+                            )
+                        } else Column(Modifier.fillMaxSize().padding(top = statusTop + CompactHeaderHeight)) {
+                            QueuePanel(remote, state, Modifier.fillMaxSize())
+                        }
+                        Box(Modifier.statusBarsPadding()) {
+                            CompactHeader(remote, state, dismissDrag, artwork = shared, onArtwork = { onMode(SheetMode.Artwork) })
                         }
                     }
                 }
+            }
             }
             AnimatedVisibility(
                 !(controlsHidden && mode == SheetMode.Lyrics),
@@ -364,7 +438,7 @@ private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode
         Column(
             Modifier.width(art).offset { IntOffset((center - art / 2).roundToPx(), 0) }.padding(top = topPad),
         ) {
-            Box(Modifier.then(dismissDrag)) {
+            Box(Modifier.then(dismissDrag).then(if (panel) Modifier.combinedClickableCompat(onClick = { onMode(SheetMode.Artwork) }) else Modifier)) {
                 val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
                 val cardShape = RoundedCornerShape(10.dp)
                 val artPx = with(androidx.compose.ui.platform.LocalDensity.current) { art.roundToPx() }
@@ -406,45 +480,127 @@ private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode
     }
 }
 
-/** Carátula (o portada animada) a todo el ancho que se funde con el fondo, como Apple Music en Android. */
+/** Alto de la cabecera de letra/cola: 30 dp arriba, carátula de 70 dp, 20 dp abajo. */
+private val CompactHeaderHeight = 120.dp
+
+/**
+ * Portada animada a todo el ancho (3:4) con lo que Apple Music pone debajo: la última franja
+ * del vídeo estirada hasta el borde de la pantalla y desenfocada, en tiempo real (en "Coloratura"
+ * de Coldplay se ve el color de un planeta que pasa por abajo bajar como un reguero hasta el
+ * final). El vídeo (un TextureView) se graba en una capa y se vuelve a dibujar estirado a 1/4
+ * de resolución con un desenfoque muy ancho (queda un color casi liso que cambia con el vídeo);
+ * encima el vídeo se funde y un velo oscuro cubre de la mitad del vídeo hacia abajo.
+ */
 @Composable
-private fun HeroArtwork(artwork: Artwork?, video: String?, background: Color, height: androidx.compose.ui.unit.Dp, dragModifier: Modifier) {
-    // El borde inferior se funde a transparente (máscara DstIn) para que debajo asome el campo de
-    // colores animado, como en Apple Music; antes se fundía a un color plano.
-    Box(
-        Modifier.fillMaxWidth().height(height).then(dragModifier)
-            .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                drawRect(Brush.verticalGradient(0.55f to Color.Black, 1f to Color.Transparent), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModifier: Modifier) {
+    val videoLayer = rememberGraphicsLayer()
+    val stretched = rememberGraphicsLayer()
+    val density = LocalDensity.current
+    // Se dibuja a 1/4: el desenfoque efectivo es 4 veces el indicado (≈ 200 dp en horizontal, 96 dp en
+    // vertical). Medido en Apple Music: bajo el vídeo apenas hay variación a lo ancho (desviación 0–1
+    // sobre 255 en "SOS"), es un color casi liso que cambia con el vídeo, no regueros.
+    val blur = remember(density) { with(density) { BlurEffect(50.dp.toPx(), 24.dp.toPx(), TileMode.Clamp) } }
+    Box(Modifier.fillMaxSize()) {
+        Spacer(
+            Modifier.fillMaxSize().drawBehind {
+                val k = 0.25f
+                val w = size.width
+                val h = size.height
+                val vh = height.toPx()
+                if (vh >= h || w <= 0f) return@drawBehind
+                val strip = vh * 0.05f
+                val small = IntSize((w * k).roundToInt().coerceAtLeast(1), (h * k).roundToInt().coerceAtLeast(1))
+                stretched.renderEffect = blur
+                stretched.record(small) {
+                    scale(k, k, pivot = Offset.Zero) {
+                        // El propio vídeo (para que bajo su fundido haya una versión desenfocada alineada)…
+                        clipRect(0f, 0f, w, vh) { drawLayer(videoLayer) }
+                        // …y su última franja estirada hasta abajo.
+                        clipRect(0f, vh, w, h) {
+                            withTransform({
+                                translate(0f, vh)
+                                scale(1f, (h - vh) / strip, pivot = Offset.Zero)
+                                translate(0f, -(vh - strip))
+                            }) { drawLayer(videoLayer) }
+                        }
+                    }
+                }
+                scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(stretched) }
             },
-    ) {
-        AnimatedCover(video, Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = artwork?.sized(PreviewArtworkPx),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-            AsyncImage(
-                model = artwork?.sized(HeroArtworkPx),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+        )
+        Box(
+            Modifier.fillMaxWidth().height(height).then(dragModifier)
+                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    videoLayer.record { this@drawWithContent.drawContent() }
+                    drawLayer(videoLayer)
+                    // Solo el último quinto: debajo está su versión desenfocada, alineada.
+                    drawRect(Brush.verticalGradient(0.78f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                },
+        ) {
+            AnimatedCover(video, Modifier.fillMaxSize()) {
+                AsyncImage(
+                    model = artwork?.sized(PreviewArtworkPx),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                AsyncImage(
+                    model = artwork?.sized(HeroArtworkPx),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
+        // Velo oscuro desde la mitad del vídeo hacia abajo, como Apple Music ("SOS" y "Coloratura": abajo queda a ~0,7
+        // del brillo del mar, un azul marino casi liso).
+        Spacer(
+            Modifier.fillMaxSize().drawBehind {
+                val vh = height.toPx() / size.height
+                drawRect(fade(vh * 0.45f, vh.coerceAtMost(1f), from = 0f, to = 0.3f))
+            },
+        )
     }
 }
 
+/**
+ * Máscara vertical de opacidad [from] a [to] entre las fracciones [a] y [b] del alto, con
+ * curva suave (con tramos rectos se ve una línea donde cambia la pendiente).
+ */
+private fun fade(a: Float, b: Float, from: Float, to: Float, steps: Int = 16): Brush {
+    val stops = Array(steps + 1) { i ->
+        val t = i / steps.toFloat()
+        val x = if (b <= a) (if (t >= a) 1f else 0f) else ((t - a) / (b - a)).coerceIn(0f, 1f)
+        val e = x * x * (3 - 2 * x)
+        t to Color.Black.copy(alpha = (from + (to - from) * e).coerceIn(0f, 1f))
+    }
+    return Brush.verticalGradient(*stops)
+}
+
 @Composable
-private fun CompactHeader(remote: CiderRemote, state: PlayerState, dragModifier: Modifier) {
+private fun CompactHeader(
+    remote: CiderRemote,
+    state: PlayerState,
+    dragModifier: Modifier,
+    artwork: Modifier = Modifier,
+    onArtwork: (() -> Unit)? = null,
+) {
     val track = state.track
     Row(
         Modifier.fillMaxWidth().then(dragModifier).padding(start = 28.dp, end = 18.dp, top = 30.dp, bottom = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val (toAlbum, toArtist) = rememberSongNavigation(remote, state)
-        ArtworkImage(track?.artwork, 70.dp, shape = RoundedCornerShape(6.dp))
+        // Tocar la carátula pequeña vuelve a la grande (Apple Music).
+        val back = stringResource(R.string.action_show_artwork)
+        ArtworkImage(
+            track?.artwork, 70.dp, shape = RoundedCornerShape(6.dp),
+            modifier = artwork.then(
+                if (onArtwork != null) Modifier.combinedClickableCompat(onClick = onArtwork).semantics { contentDescription = back; role = Role.Button }
+                else Modifier,
+            ),
+        )
         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
             TitleText(state, Apple.type.headline.copy(fontSize = 18.sp), Modifier.combinedClickableCompat(onClick = toAlbum))
             Text(track?.artistName.orEmpty(), style = Apple.type.body, color = Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
