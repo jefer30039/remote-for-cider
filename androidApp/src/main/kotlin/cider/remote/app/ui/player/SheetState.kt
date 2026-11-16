@@ -1,6 +1,8 @@
 package cider.remote.app.ui.player
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -8,10 +10,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
@@ -32,6 +36,47 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
     /** Alto de la pantalla en px; lo fija quien dibuja la hoja. */
     var height = 1f
 
+    /**
+     * Transición de Apple Music en Android (teléfono; medida en dos grabaciones de pantalla del
+     * 2026-11-16): la hoja sale de la altura del miniplayer y aparece fundiéndose, su carátula
+     * vuela desde la miniatura del miniplayer hasta su sitio, la página de debajo se oscurece y
+     * la barra y el miniplayer bajan y salen de la pantalla. Todo es función de [progress], así
+     * que también sigue al dedo. En tablet ([flies] = false) la hoja sube opaca desde abajo.
+     */
+    var flies = false
+    /** Miniatura del miniplayer en reposo (coordenadas de la raíz); origen del vuelo de la carátula. */
+    var thumb: Rect? = null
+        private set
+    private var miniTop = 0f
+    /** Cuánto bajan la barra y el miniplayer para salir de la pantalla, en px. */
+    var barsTravel = 0f
+
+    fun setThumb(bounds: Rect, miniTop: Float) {
+        val old = thumb
+        // Con tolerancia: el redondeo al colocar las barras mientras bajan no debe mover el origen.
+        if (old == null || kotlin.math.abs(old.top - bounds.top) > 1.5f || kotlin.math.abs(old.left - bounds.left) > 1.5f ||
+            kotlin.math.abs(old.width - bounds.width) > 1.5f
+        ) {
+            thumb = bounds
+            this.miniTop = miniTop
+        }
+    }
+
+    /** Recorrido de la hoja en px: desde el borde superior del miniplayer (o desde abajo, en tablet). */
+    val distance: Float get() = if (flies && thumb != null) miniTop.coerceAtLeast(1f) else height
+    /** Cuánto está desplazada la hoja hacia abajo ahora, en px. */
+    val offsetPx: Float get() = position.value * distance
+    /** 0 = cerrada, 1 = abierta. */
+    val progress: Float get() = (1f - position.value).coerceIn(0f, 1f)
+    /** Opacidad del fondo y los controles de la hoja (la carátula va siempre opaca). */
+    val contentAlpha: Float get() = if (flies) smooth((progress - 0.2f) / 0.6f) else 1f
+    /** Oscurecido de la página de debajo. */
+    val scrim: Float get() = if (flies) 0.9f * progress else 0f
+    /** Desplazamiento hacia abajo de la barra y el miniplayer, en px: ya han salido con un 30 % de recorrido. */
+    val barsShift: Float get() = if (flies) barsTravel * smooth(progress / 0.3f) else 0f
+
+    private fun smooth(x: Float): Float { val t = x.coerceIn(0f, 1f); return t * t * (3f - 2f * t) }
+
     /** Se dibuja mientras no esté del todo cerrada. */
     val visible get() = position.value < 1f
     /** Abierta o yendo hacia abierta (para el botón atrás y para guardar el estado). */
@@ -41,11 +86,30 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
     // se decide con ella (position.value aún no ha recibido los últimos movimientos).
     private var target = position.value
 
-    fun open() { target = 0f; scope.launch { position.animateTo(0f, Settle) } }
-    fun close() { target = 1f; scope.launch { position.animateTo(1f, Settle) } }
+    /** [tap]: abierta con un toque (sale rápida y frena, como en Apple Music); si no, al soltar el dedo. */
+    fun open(tap: Boolean = false) {
+        target = 0f
+        scope.launch {
+            if (tap && flies) {
+                // La hoja tarda 2–4 fotogramas en componerse la primera vez y la curva sale rápida: sin
+                // esperar, cuando por fin se dibuja ya va por más de la mitad y el vuelo no se ve.
+                if (position.value >= 1f) {
+                    position.snapTo(0.999f)
+                    repeat(2) { withFrameNanos { } }
+                }
+                position.animateTo(0f, Tap)
+            } else position.animateTo(0f, Settle)
+        }
+    }
+
+    /** Cierra; [released] = al soltar el dedo (muelle), si no con la curva lenta de Apple Music (botón atrás, ir a otra página). */
+    fun close(released: Boolean = false) {
+        target = 1f
+        scope.launch { position.animateTo(1f, if (flies && !released) Close else Settle) }
+    }
 
     fun dragBy(px: Float) {
-        target = (target + px / height).coerceIn(0f, 1f)
+        target = (target + px / distance).coerceIn(0f, 1f)
         val to = target
         scope.launch { position.snapTo(to) }
     }
@@ -59,13 +123,19 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
      */
     fun settle(velocity: Float) = when {
         velocity < -flingPx -> open()
-        velocity > flingPx -> close()
-        dragStart < 0.5f -> if (target > 0.2f) close() else open()
-        else -> if (target < 0.8f) open() else close()
+        velocity > flingPx -> close(released = true)
+        dragStart < 0.5f -> if (target > 0.2f) close(released = true) else open()
+        else -> if (target < 0.8f) open() else close(released = true)
     }
 
     private companion object {
         val Settle = spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 500f)
+        // Medido en Apple Music. Al abrir con un toque sale rápida y frena como una exponencial de
+        // constante ~95 ms: 37 % a los 40 ms, 67 % a los 107, 87 % a los 173 y 95 % a los 240.
+        val Tap = tween<Float>(450, easing = { x -> ((1.0 - kotlin.math.exp(-x * 450.0 / 95.0)) / (1.0 - kotlin.math.exp(-450.0 / 95.0))).toFloat() })
+        // Al cerrar va casi a velocidad constante y frena al final: 28 % a los 140 ms, 49 % a los 240,
+        // 68 % a los 340, 82 % a los 440 y acaba hacia los 590.
+        val Close = tween<Float>(580, easing = CubicBezierEasing(0.25f, 0.3f, 0.6f, 1f))
     }
 }
 

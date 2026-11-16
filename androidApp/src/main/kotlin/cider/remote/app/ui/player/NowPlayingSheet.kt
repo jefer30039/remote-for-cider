@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.statusBars
@@ -204,25 +205,29 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
     }
     val video = if (wide) null else cover?.tall
 
+    val root = remember { SheetRoot() }
     Box(
         Modifier.fillMaxSize()
-            .graphicsLayer { translationY = sheet.position.value * size.height }
+            .graphicsLayer { translationY = sheet.offsetPx }
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
-            .background(background),
+            // En teléfono la hoja aparece fundiéndose (SheetState.flies); la carátula no.
+            .drawBehind { drawRect(background, alpha = sheet.contentAlpha) },
     ) {
+        // Referencia para el vuelo de la carátula: la hoja sin su traslación.
+        Spacer(Modifier.matchParentSize().onGloballyPositioned { root.coordinates = it })
         // Fondo: campo de colores de la carátula con animación lenta (Apple Music), también en tablet;
         // con letra o cola, más oscuro. Con portada animada a la vista, Apple no anima el fondo: queda el
         // color plano de la carátula (el degradado de la caja), y el vídeo se funde en él.
         // Con portada animada a la vista no hay campo: debajo va el borde del vídeo estirado (HeroArtwork).
-        if (video == null || mode != SheetMode.Artwork) {
+        if (video == null || mode != SheetMode.Artwork) Box(Modifier.fillMaxSize().sheetFade(sheet)) {
             ColorField(palette, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         }
         // Tablet: la portada animada cuadrada dentro de la tarjeta (iPad); el fondo sigue siendo el campo de color.
         if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag, cover?.square)
-        else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag, video)
+        else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag, video, sheet, root)
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
-            Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp)
+            Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp).sheetFade(sheet)
                 .size(width = 36.dp, height = 5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.45f)),
         )
     }
@@ -288,8 +293,11 @@ private fun PhoneSheet(
     background: Color,
     dismissDrag: Modifier,
     video: String?,
+    sheet: SheetState,
+    root: SheetRoot,
 ) {
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val fade = Modifier.sheetFade(sheet)
     // Con la letra a la vista y sonando, los controles se repliegan a los 4 s sin tocar nada y la
     // letra ocupa la pantalla (Apple Music); cualquier toque los devuelve.
     var touches by remember { mutableIntStateOf(0) }
@@ -312,7 +320,8 @@ private fun PhoneSheet(
         val width = maxWidth
         // Portada animada: 3:4 a todo el ancho, detrás de todo y fundida con el fondo.
         AnimatedVisibility(mode == SheetMode.Artwork && video != null, enter = fadeIn(), exit = fadeOut()) {
-            HeroArtwork(state.track?.artwork, video, width * 4 / 3, dismissDrag)
+            // Al abrir y cerrar vuela entera (vídeo y su reflejo) desde la miniatura, pegada a la izquierda.
+            HeroArtwork(state.track?.artwork, video, width * 4 / 3, dismissDrag, rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp))
         }
         Column(Modifier.fillMaxSize()) {
             // La carátula pasa de la cabecera pequeña (letra/cola) a la tarjeta grande y vuelve
@@ -353,16 +362,19 @@ private fun PhoneSheet(
                             if (video == null) {
                                 val side = minOf(width - 48.dp, maxHeight - 44.dp - 34.dp)
                                 // Como iOS: la carátula se encoge al pausar y vuelve con un muelle al reproducir.
-                                val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
-                                ArtworkImage(
-                                    state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp).then(shared)
-                                        .graphicsLayer { scaleX = scale; scaleY = scale }
-                                        .shadow(24.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black),
-                                )
+                                val scale = animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
+                                // Al abrir y cerrar la hoja vuela desde la miniatura del miniplayer (la escala de pausa va en la misma capa).
+                                val fly = rememberSheetFly(sheet, root, restScale = { scale.value })
+                                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp).then(shared).then(fly.outer)) {
+                                    ArtworkImage(
+                                        state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = RoundedCornerShape(10.dp),
+                                        modifier = fly.inner
+                                            .shadow(24.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black),
+                                    )
+                                }
                             }
                         }
-                        Box(Modifier.padding(start = 33.dp, end = 22.dp)) { TitleRow(remote, state) }
+                        Box(Modifier.padding(start = 33.dp, end = 22.dp).then(fade)) { TitleRow(remote, state) }
                     }
                     }
                     SheetMode.Lyrics, SheetMode.Queue -> Box(Modifier.fillMaxSize()) {
@@ -374,7 +386,7 @@ private fun PhoneSheet(
                             val fadeTo = with(LocalDensity.current) { (statusTop + CompactHeaderHeight + 14.dp).toPx() }
                             LyricsView(
                                 remote, state,
-                                Modifier.fillMaxSize()
+                                Modifier.fillMaxSize().then(fade)
                                     .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
                                     .drawWithContent {
                                         drawContent()
@@ -385,11 +397,14 @@ private fun PhoneSheet(
                                     },
                                 anchorTop = statusTop + CompactHeaderHeight + 34.dp,
                             )
-                        } else Column(Modifier.fillMaxSize().padding(top = statusTop + CompactHeaderHeight)) {
+                        } else Column(Modifier.fillMaxSize().padding(top = statusTop + CompactHeaderHeight).then(fade)) {
                             QueuePanel(remote, state, Modifier.fillMaxSize())
                         }
                         Box(Modifier.statusBarsPadding()) {
-                            CompactHeader(remote, state, dismissDrag, artwork = shared, onArtwork = { onMode(SheetMode.Artwork) })
+                            CompactHeader(
+                                remote, state, dismissDrag, artwork = shared, onArtwork = { onMode(SheetMode.Artwork) },
+                                fly = rememberSheetFly(sheet, root), fade = fade,
+                            )
                         }
                     }
                 }
@@ -400,7 +415,7 @@ private fun PhoneSheet(
                 enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
                 exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
             ) {
-                Column(Modifier.padding(horizontal = 33.dp)) {
+                Column(Modifier.padding(horizontal = 33.dp).then(fade)) {
                     Spacer(Modifier.height(8.dp))
                     Progress(remote, state)
                     Spacer(Modifier.height(10.dp))
@@ -503,11 +518,12 @@ private val CompactHeaderHeight = 120.dp
  * (en arco, ver [BlurArcCenter]) y un velo oscuro crece desde el borde del vídeo hasta ~0,37 abajo (Apple no oscurece el vídeo).
  */
 @Composable
-private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModifier: Modifier) {
+private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModifier: Modifier, fly: SheetFly) {
     val videoLayer = rememberGraphicsLayer()
     val near = rememberGraphicsLayer()
     val far = rememberGraphicsLayer()
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().then(fly.outer)) {
+    Box(Modifier.fillMaxSize().then(fly.inner)) {
         Spacer(
             Modifier.fillMaxSize().drawWithCache {
                 val k = MirrorScale
@@ -609,6 +625,7 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModif
             },
         )
     }
+    }
 }
 
 /**
@@ -651,6 +668,9 @@ private fun CompactHeader(
     dragModifier: Modifier,
     artwork: Modifier = Modifier,
     onArtwork: (() -> Unit)? = null,
+    /** Vuelo de la carátula y fundido del resto al abrir y cerrar la hoja (teléfono). */
+    fly: SheetFly? = null,
+    fade: Modifier = Modifier,
 ) {
     val track = state.track
     Row(
@@ -660,19 +680,21 @@ private fun CompactHeader(
         val (toAlbum, toArtist) = rememberSongNavigation(remote, state)
         // Tocar la carátula pequeña vuelve a la grande (Apple Music).
         val back = stringResource(R.string.action_show_artwork)
-        ArtworkImage(
-            track?.artwork, 70.dp, shape = RoundedCornerShape(6.dp),
-            modifier = artwork.then(
-                if (onArtwork != null) Modifier.combinedClickableCompat(onClick = onArtwork).semantics { contentDescription = back; role = Role.Button }
-                else Modifier,
-            ),
-        )
-        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+        Box(artwork.then(fly?.outer ?: Modifier)) {
+            ArtworkImage(
+                track?.artwork, 70.dp, shape = RoundedCornerShape(6.dp),
+                modifier = (fly?.inner ?: Modifier).then(
+                    if (onArtwork != null) Modifier.combinedClickableCompat(onClick = onArtwork).semantics { contentDescription = back; role = Role.Button }
+                    else Modifier,
+                ),
+            )
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp).then(fade)) {
             TitleText(state, Apple.type.headline.copy(fontSize = 18.sp), Modifier.combinedClickableCompat(onClick = toAlbum))
             Text(track?.artistName.orEmpty(), style = Apple.type.body, color = Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.combinedClickableCompat(onClick = toArtist))
         }
-        MoreMenu(remote, state)
+        Box(fade) { MoreMenu(remote, state) }
     }
 }
 

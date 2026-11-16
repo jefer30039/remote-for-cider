@@ -79,6 +79,8 @@ fun MiniPlayer(
     label: (() -> Color)? = null,
     /** Velo del vidrio (el mismo que el de la barra de pestañas), leído al dibujar. */
     container: (() -> Color)? = null,
+    /** Para la miniatura de la carátula (la hoja de reproducción la usa de origen de su transición). */
+    thumb: Modifier = Modifier,
 ) {
     val track = state.track
     val shape = CircleShape
@@ -113,7 +115,7 @@ fun MiniPlayer(
             .padding(start = 12.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ArtworkImage(track?.artwork, 32.dp, shape = RoundedCornerShape(5.dp), px = 120)
+        ArtworkImage(track?.artwork, 32.dp, thumb, shape = RoundedCornerShape(5.dp), px = 120)
         Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
             BasicText(
                 track?.name ?: stringResource(R.string.status_not_playing), style = Apple.type.subhead.copy(fontSize = 14.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold),
