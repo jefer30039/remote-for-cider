@@ -1,5 +1,6 @@
 package cider.remote.app.ui.player
 
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.BlurEffect
@@ -178,7 +179,10 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
     val palette = rememberArtworkPalette(state.track?.artwork)
     val background by animateColorAsState(palette?.firstOrNull() ?: sheetBackground(rememberArtworkColor(state.track?.artwork)), tween(700), label = "fondo")
 
-    BackHandler(enabled = sheet.isOpen) { if (mode != SheetMode.Artwork) mode = SheetMode.Artwork else sheet.close() }
+    // Derivados: la posición de la hoja cambia en cada fotograma del gesto y leerla aquí recomponía la hoja entera.
+    val open by remember(sheet) { derivedStateOf { sheet.isOpen } }
+    val moved by remember(sheet) { derivedStateOf { sheet.position.value > 0f } }
+    BackHandler(enabled = open) { if (mode != SheetMode.Artwork) mode = SheetMode.Artwork else sheet.close() }
     LightStatusBarIcons()
     // Con la letra a la vista la pantalla no se apaga (como Apple Music).
     val view = LocalView.current
@@ -189,7 +193,7 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
     }
 
     val dismissDrag = Modifier.sheetDrag(sheet)
-    val corner = if (sheet.position.value > 0f) 24.dp else 0.dp
+    val corner = if (moved) 24.dp else 0.dp
     // Portada animada (ya consultada de antemano por PrefetchNowPlaying): la hoja abre con su forma final.
     val catalogId = state.track?.catalogId
     val cover by produceState(AnimatedCovers.peek(catalogId), catalogId) {

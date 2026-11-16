@@ -186,7 +186,11 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     BackHandler(enabled = sidebar) { sidebar = false }
     var rootSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     // Atrás predictivo: la página sigue al dedo, como el deslizamiento desde el borde de iOS.
-    PredictiveBackHandler(enabled = !sheet.isOpen && !sidebar && stack.size > 1) { events ->
+    // Estado de la hoja derivado: `sheet.isOpen`/`sheet.visible` leen su posición, que cambia en cada
+    // fotograma del gesto; leídos directamente recomponían toda esta pantalla a cada fotograma.
+    val sheetOpen by remember(sheet) { derivedStateOf { sheet.isOpen } }
+    val sheetVisible by remember(sheet) { derivedStateOf { sheet.visible } }
+    PredictiveBackHandler(enabled = !sheetOpen && !sidebar && stack.size > 1) { events ->
         pages.predictiveBack(events, rootSize.width.toFloat())
     }
 
@@ -234,6 +238,17 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     val pageBackdrop: Backdrop = pageLayer ?: rememberSharedBackdrop(haze)
     PrefetchNowPlaying(remote, state.track)
     val density = androidx.compose.ui.platform.LocalDensity.current
+    // El grupo de vidrio de abajo (barra y miniplayer) queda tapado por la hoja de reproducción, que es
+    // opaca, mientras el borde superior de la hoja está por encima de él (con margen para las esquinas
+    // redondeadas de la hoja y la sombra del vidrio): entonces va con alfa 0 y el sistema no lo dibuja
+    // (sus desenfoques costaban hilo de render en casi todo el recorrido de abrir y cerrar). Se lee
+    // al dibujar, sin recomponer.
+    val bottomGroupPx = with(density) {
+        (barBottom + (if (wide) WideMiniHeight else TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp) + 48.dp).toPx()
+    }
+    val bottomGroupAlpha = remember(sheet, bottomGroupPx) {
+        { if (sheet.position.value * sheet.height < sheet.height - bottomGroupPx) 0f else 1f }
+    }
     // Fondo de vidrio para todo lo que cuelga de aquí (también los ⋮ y sus menús, que viven fuera de la página).
     CompositionLocalProvider(LocalGlassBackdrop provides haze) {
     Box(Modifier.fillMaxSize().background(Apple.colors.background).onSizeChanged { sheet.height = it.height.toFloat(); rootSize = it }) {
@@ -497,7 +512,8 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                 remote, state, haze, onOpen = openSheet,
                 label = { miniLabel.value }, container = { miniVeil.value },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = barBottom)
-                    .widthIn(max = WideMiniMaxWidth).fillMaxWidth().padding(horizontal = SideMargin).sheetDrag(sheet),
+                    .widthIn(max = WideMiniMaxWidth).fillMaxWidth().padding(horizontal = SideMargin)
+                    .graphicsLayer { alpha = bottomGroupAlpha() }.sheetDrag(sheet),
             )
             AnimatedVisibility(sidebar, enter = slideInHorizontally { -it }, exit = slideOutHorizontally { -it }) {
                 Sidebar(tab, haze, connection.endpoint.host, onSelect = { select(it); sidebar = false }, onClose = { sidebar = false }, onForget = onForget)
@@ -512,7 +528,8 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             Box(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                     .padding(start = SideMargin, end = SideMargin, bottom = barBottom)
-                    .height(TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp),
+                    .height(TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp)
+                    .graphicsLayer { alpha = bottomGroupAlpha() },
             ) {
                 if (hasTrack) MiniPlayer(
                     remote, state, onOpen = { openSheet(SheetMode.Artwork) }, haze = haze,
@@ -546,7 +563,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
 
         // Deslizar el miniplayer hacia arriba la abre siguiendo al dedo (Apple Music).
         // Desde la hoja, "ir al álbum/artista" la cierra y abre la página en la pestaña actual.
-        if (sheet.visible && hasTrack) CompositionLocalProvider(LocalOpenRoute provides { r -> sheet.close(); pages.push(r) }, LocalGlassBackdrop provides haze) {
+        if (sheetVisible && hasTrack) CompositionLocalProvider(LocalOpenRoute provides { r -> sheet.close(); pages.push(r) }, LocalGlassBackdrop provides haze) {
             NowPlayingSheet(remote, state, sheet, initialMode = sheetMode)
         }
     }
