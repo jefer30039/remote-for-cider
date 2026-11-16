@@ -146,7 +146,7 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
     }
 
     LightStatusBarIcons()
-    ForceDark {
+    ForceDark(bg) {
         Box(Modifier.fillMaxSize()) {
             // Fondo en su propia capa (ver CollectionScreen): el fundido no regraba la página.
             Box(Modifier.matchParentSize().graphicsLayer().drawBehind { drawRect(bgShown.value) })

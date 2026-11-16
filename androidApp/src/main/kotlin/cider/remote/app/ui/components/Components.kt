@@ -151,6 +151,7 @@ fun ListRow(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     titleColor: Color = Apple.colors.label,
+    subtitleColor: Color = Apple.colors.secondaryLabel,
     leading: (@Composable () -> Unit)? = null,
     leadingWidth: Dp = 0.dp,
     trailing: (@Composable () -> Unit)? = null,
@@ -175,7 +176,7 @@ fun ListRow(
             Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
                 Text(title, style = titleStyle ?: Apple.type.body, color = titleColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (!subtitle.isNullOrBlank()) Text(
-                    subtitle, style = Apple.type.subhead, color = Apple.colors.secondaryLabel,
+                    subtitle, style = Apple.type.subhead, color = subtitleColor,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }

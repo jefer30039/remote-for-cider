@@ -561,6 +561,7 @@ private fun WideCollectionHeader(
     onShuffle: () -> Unit,
     onAddLater: () -> Unit,
     onArtist: (() -> Unit)? = null,
+    secondary: Color = Color.White.copy(alpha = 0.62f),
 ) {
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Column(Modifier.padding(start = Margin, end = Margin, top = top + 74.dp)) {
@@ -577,7 +578,7 @@ private fun WideCollectionHeader(
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).combinedClickableCompat(onClick = onArtist),
                 )
                 val meta = collectionMeta(route, count)
-                Text(meta, style = Apple.type.subhead.copy(fontWeight = FontWeight.SemiBold), color = Color.White.copy(alpha = 0.62f),
+                Text(meta, style = Apple.type.subhead.copy(fontWeight = FontWeight.SemiBold), color = secondary,
                     modifier = Modifier.padding(top = 8.dp))
                 Row(
                     Modifier.padding(top = 32.dp),
@@ -633,6 +634,11 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
     // Si el color llega cuando la página ya se ve (se calcula de la carátula), se funde en vez
     // de saltar. Se lee al dibujar: la página no se recompone en cada fotograma del fundido.
     val bgShown = androidx.compose.animation.animateColorAsState(bg, androidx.compose.animation.core.tween(350), label = "fondoAlbum")
+    // Texto secundario: blanco translúcido, salvo en fondos claros (tema claro con carátulas
+    // amarillas u ocres), donde pasa a un tono oscuro del fondo para seguir leyéndose.
+    val secondary = remember(bg) { cider.remote.app.ui.components.readableOn(bg, Color.White.copy(alpha = 0.62f)) }
+    val more = remember(bg) { cider.remote.app.ui.components.readableOn(bg, Color.White.copy(alpha = 0.8f), target = 3f) }
+    val faint = remember(bg) { cider.remote.app.ui.components.readableOn(bg, Color.White.copy(alpha = 0.45f), target = 3f) }
     val wideScreen = wide
     // En tablet la portada va en tarjeta (vídeo cuadrado); el vertical a todo el ancho sería enorme.
     val tall = cover?.tall?.takeUnless { wideScreen }
@@ -663,7 +669,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
         LazyVerticalGrid(columns = GridCells.Fixed(1), contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             fullWidth {
                 if (wideScreen) WideCollectionHeader(
-                    route, cover?.square, tracks?.getOrNull()?.size, onArtist = toArtist,
+                    route, cover?.square, tracks?.getOrNull()?.size, onArtist = toArtist, secondary = secondary,
                     onPlay = { play(false) }, onShuffle = { play(true) },
                     onAddLater = { scope.launch { runCatching { remote.api.queueAddLater(route.kind, route.id) } } },
                 ) else
@@ -702,7 +708,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                         val meta = collectionMeta(route, count)
                         Text(
                             meta, style = Apple.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White.copy(alpha = 0.62f), modifier = Modifier.padding(top = 8.dp),
+                            color = secondary, modifier = Modifier.padding(top = 8.dp),
                         )
                         Row(
                             Modifier.padding(top = 18.dp),
@@ -737,13 +743,14 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                             title = t.title,
                             titleStyle = Apple.type.callout,
                             titleColor = Color.White,
+                            subtitleColor = secondary,
                             // En playlists siempre; en álbumes, cuando la canción es de otro artista (recopilaciones).
                             subtitle = if (route.isPlaylist || (t.artist != null && t.artist != route.subtitle)) t.artist else null,
                             leading = {
                                 if (route.isPlaylist) ArtworkImage(t.artwork, 44.dp, shape = RoundedCornerShape(4.dp))
                                 else Text(
                                     (t.number ?: (i + 1)).toString(), style = Apple.type.callout,
-                                    color = Color.White.copy(alpha = 0.45f), modifier = Modifier.padding(start = 8.dp),
+                                    color = faint, modifier = Modifier.padding(start = 8.dp),
                                 )
                             },
                             leadingWidth = if (route.isPlaylist) 58.dp else 32.dp,
@@ -754,9 +761,9 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                                     // En tablet, la duración antes del ⋮ (Apple Music en tablet).
                                     if (wideScreen) t.durationMs?.let {
                                         Text(formatTime(it / 1000.0), style = Apple.type.subhead.copy(fontSize = Apple.type.footnote.fontSize),
-                                            color = Color.White.copy(alpha = 0.55f), modifier = Modifier.padding(end = 12.dp))
+                                            color = secondary, modifier = Modifier.padding(end = 12.dp))
                                     }
-                                    MoreButton(Color.White.copy(alpha = 0.8f)) { if (t.available) rowMenu = true }
+                                    MoreButton(more) { if (t.available) rowMenu = true }
                                 }
                             },
                             onClick = if (t.available) ({ play(false, startAt = i) }) else null,
@@ -774,7 +781,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                         pluralStringResource(R.plurals.song_count, list.size, list.size),
                         pluralStringResource(R.plurals.minute_count, minutes, minutes),
                     ),
-                    style = Apple.type.body, color = Color.White.copy(alpha = 0.55f),
+                    style = Apple.type.body, color = secondary,
                     modifier = Modifier.offset(y = listOverlap).padding(start = Margin, top = 24.dp),
                 )
             }

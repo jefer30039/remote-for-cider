@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -131,6 +132,18 @@ private val LocalAppleType = staticCompositionLocalOf { AppleType() }
 /** Paleta oscura pase lo que pase: páginas con fondo de color (álbum, artista), donde el texto va en blanco. */
 @Composable
 fun ForceDark(content: @Composable () -> Unit) = CompositionLocalProvider(LocalAppleColors provides Dark, content = content)
+
+/**
+ * Paleta oscura sobre un fondo de página de color: el texto secundario pasa a un tono del fondo
+ * cuando el gris no se leería (fondos claros del tema claro).
+ */
+@Composable
+fun ForceDark(background: Color, content: @Composable () -> Unit) {
+    val colors = remember(background) {
+        Dark.copy(secondaryLabel = cider.remote.app.ui.components.readableOn(background, Dark.secondaryLabel))
+    }
+    CompositionLocalProvider(LocalAppleColors provides colors, content = content)
+}
 
 object Apple {
     val colors: AppleColors

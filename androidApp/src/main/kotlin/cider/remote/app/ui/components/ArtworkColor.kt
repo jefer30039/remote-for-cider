@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -139,4 +140,30 @@ fun fadeInto(color: Color, from: Float = 0.45f, steps: Int = 12): androidx.compo
         (from + (1 - from) * t) to color.copy(alpha = eased)
     }
     return androidx.compose.ui.graphics.Brush.verticalGradient(*stops)
+}
+
+/** Contraste WCAG entre dos colores opacos. */
+private fun contrast(a: Color, b: Color): Float {
+    val la = a.luminance(); val lb = b.luminance()
+    return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
+}
+
+/**
+ * Texto secundario sobre el fondo de página [bg]: siempre blanco más tenue que el título, nunca
+ * un gris oscuro. Si [base] (compuesto sobre el fondo) es más claro que el fondo y llega al
+ * contraste pedido, se queda; si no (el gris #98989F o el blanco translúcido casi desaparecían
+ * sobre los fondos claros del tema claro, ocres o grises), se sube la opacidad del blanco hasta
+ * llegar. El objetivo es [target], como mucho 3:1 y como mucho el 82 % del contraste del blanco
+ * puro (el del título): así sigue viéndose más tenue que él. El tema oscuro no cambia.
+ */
+fun readableOn(bg: Color, base: Color, target: Float = 4.5f): Color {
+    val solidBg = bg.copy(alpha = 1f)
+    val goal = minOf(target, 3f, contrast(Color.White, solidBg) * 0.82f)
+    val shown = base.compositeOver(solidBg)
+    if (shown.luminance() > solidBg.luminance() && contrast(shown, solidBg) >= goal) return base
+    for (i in 0..100) {
+        val c = Color.White.copy(alpha = i / 100f)
+        if (contrast(c.compositeOver(solidBg), solidBg) >= goal) return c
+    }
+    return Color.White
 }
