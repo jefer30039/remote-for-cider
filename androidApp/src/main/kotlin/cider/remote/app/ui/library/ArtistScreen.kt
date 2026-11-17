@@ -122,13 +122,19 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
     val margin = LocalWindowLayout.current.margin
     val hero = page?.let { if (wide) it.heroWide ?: it.heroTall else it.heroTall ?: it.heroWide } ?: page?.artwork
     // Fondo del color de la imagen editorial, como en los álbumes.
-    val bg = (hero?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() } ?: Color(0xFF2C2C2E)).pageBackground(dark = androidx.compose.foundation.isSystemInDarkTheme())
+    fun parse(hex: String?) = hex?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() }
+    // Con vídeo, el color de su fotograma tal cual (Apple Music); si no, el de la imagen ajustado como en los álbumes.
+    val videoBg = page?.let { if (wide) it.videoWide?.let { _ -> it.videoWidePreview } else it.videoSquare?.let { _ -> it.videoSquarePreview } }?.bgColor
+    val bg = parse(videoBg) ?: (parse(hero?.bgColor) ?: Color(0xFF2C2C2E)).pageBackground(dark = androidx.compose.foundation.isSystemInDarkTheme())
     val pageBackground = cider.remote.app.ui.LocalPageBackground.current
     androidx.compose.runtime.SideEffect { pageBackground.value = bg }
     // El color de la imagen editorial llega con la página: se funde en vez de saltar (leído al dibujar).
     val bgShown = androidx.compose.animation.animateColorAsState(bg, androidx.compose.animation.core.tween(350), label = "fondoArtista")
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { pageBackground.value = null } }
     var showInfo by remember { mutableStateOf(false) }
+    // El reproductor del vídeo de la cabecera vive con la página: al bajar, la cabecera sale de la
+    // lista y al volver a subir sigue el mismo, sin crear otro (MediaCodec + HLS de nuevo).
+    val heroPlayer = cider.remote.app.ui.components.rememberCoverPlayerPool(capacity = 1)
 
     /** Reproduce las canciones top (Apple Music hace lo mismo con "Reproducir"), desde [startAt]. */
     fun play(shuffle: Boolean, startAt: Int = 0) = scope.launch {
@@ -152,7 +158,7 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
             Box(Modifier.matchParentSize().graphicsLayer().drawBehind { drawRect(bgShown.value) })
             LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
                 item {
-                    Hero(page, fallbackName, bgShown, wide, onPlay = { play(false) }, onShuffle = { play(true) }, onInfo = { showInfo = true })
+                    Hero(page, fallbackName, bgShown, wide, heroPlayer, onPlay = { play(false) }, onShuffle = { play(true) }, onInfo = { showInfo = true })
                 }
                 val p = page
                 when {
@@ -179,20 +185,29 @@ private fun CatalogArtist(remote: CiderRemote, host: String, catalogId: String, 
 
 /**
  * Cabecera: imagen editorial (3:4 recortada a ~1:1,08 en teléfono, panorámica en tablet)
- * fundida con el fondo, el logo del artista encima y el botón de reproducir montado
+ * fundida con el fondo; si el artista tiene vídeo (Apple Music), el vídeo en su lugar: el cuadrado
+ * en teléfono y el 16:9 en tablet, recortados a la cabecera, con su primer fotograma de espera; el logo del artista encima y el botón de reproducir montado
  * sobre el borde inferior, con info y aleatorio a 76 dp de su centro (Apple Music).
  */
 @Composable
-private fun Hero(page: ArtistPage?, fallbackName: String, bg: androidx.compose.runtime.State<Color>, wide: Boolean, onPlay: () -> Unit, onShuffle: () -> Unit, onInfo: () -> Unit) {
+private fun Hero(page: ArtistPage?, fallbackName: String, bg: androidx.compose.runtime.State<Color>, wide: Boolean, player: cider.remote.app.ui.components.CoverPlayerPool, onPlay: () -> Unit, onShuffle: () -> Unit, onInfo: () -> Unit) {
     val hero = page?.let { if (wide) it.heroWide ?: it.heroTall else it.heroTall ?: it.heroWide }
     val ratio = if (wide) 2.2f else 1f / 1.08f
     Box(Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(ratio)) {
             val model = if (wide) hero?.cropped(2000, 909) else hero?.cropped(1200, 1296)
-            AsyncImage(
-                model = model ?: page?.artwork?.sized(1200), contentDescription = null, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            val video = if (wide) page?.videoWide else page?.videoSquare
+            val preview = if (wide) page?.videoWidePreview?.sized(2000, 1125) else page?.videoSquarePreview?.sized(1200, 1200)
+            cider.remote.app.ui.components.AnimatedCover(
+                video, Modifier.fillMaxSize(),
+                maxVideoSize = if (wide) androidx.compose.ui.unit.IntSize(2560, 1440) else androidx.compose.ui.unit.IntSize(1440, 1440),
+                pool = player,
+            ) {
+                AsyncImage(
+                    model = (if (video != null) preview else null) ?: model ?: page?.artwork?.sized(1200),
+                    contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                )
+            }
             Box(Modifier.fillMaxSize().graphicsLayer().drawBehind { drawRect(cider.remote.app.ui.components.fadeInto(bg.value, from = 0.4f)) })
             // Logo editorial (PNG con transparencia); si no hay, el nombre en grande.
             val logo = page?.logo

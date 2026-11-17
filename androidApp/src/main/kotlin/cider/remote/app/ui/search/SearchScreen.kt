@@ -87,6 +87,12 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
         value = runCatching { remote.api.searchCategories() }.getOrDefault(emptyList())
     }
     val focus = LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // Como iOS: el teclado se cierra al tocar cualquier resultado (también una canción, que suena sin
+    // cambiar de pantalla) y al desplazar la lista. Al abrir una página hay que soltar el campo: si no,
+    // el teclado seguía abierto encima de ella (la búsqueda queda compuesta debajo con el foco).
+    val dismiss: () -> Unit = { keyboard?.hide(); focus.clearFocus() }
+    val open: (Route) -> Unit = { dismiss(); onOpen(it) }
 
     // Busca mientras se escribe, con una pausa para no saturar a Cider.
     LaunchedEffect(term) {
@@ -101,6 +107,7 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
     val margin = Margin
     val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     cider.remote.app.ui.ScrollToTopEffect { grid.animateScrollToItem(0) }
+    LaunchedEffect(grid.isScrollInProgress) { if (grid.isScrollInProgress) dismiss() }
     LazyVerticalGrid(
         columns = GridCells.Fixed(layout.columns(200.dp, 2)),
         state = grid,
@@ -139,7 +146,7 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
             term.isBlank() -> items(categories.size, key = { "cat-" + categories[it].id }) { i ->
                 CategoryTile(
                     categories[i],
-                    onClick = { onOpen(Route.Category(categories[i].id, categories[i].name)) },
+                    onClick = { open(Route.Category(categories[i].id, categories[i].name)) },
                     modifier = Modifier.padding(bottom = TileGap),
                 )
             }
@@ -152,10 +159,10 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
             listOf(r.songs, r.albums, r.artists, r.playlists).all { it?.data.isNullOrEmpty() } ->
                 full { EmptyState(stringResource(R.string.search_no_results), stringResource(R.string.search_try_other)) }
             else -> {
-                section(R.string.library_artists, r.artists?.data) { ResultRow(remote, it, onOpen) }
-                section(R.string.library_albums, r.albums?.data) { ResultRow(remote, it, onOpen) }
-                section(R.string.library_songs, r.songs?.data) { ResultRow(remote, it, onOpen) }
-                section(R.string.library_playlists, r.playlists?.data) { ResultRow(remote, it, onOpen) }
+                section(R.string.library_artists, r.artists?.data) { ResultRow(remote, it, open, dismiss) }
+                section(R.string.library_albums, r.albums?.data) { ResultRow(remote, it, open, dismiss) }
+                section(R.string.library_songs, r.songs?.data) { ResultRow(remote, it, open, dismiss) }
+                section(R.string.library_playlists, r.playlists?.data) { ResultRow(remote, it, open, dismiss) }
             }
         }
     }
@@ -195,7 +202,7 @@ private fun LazyGridScope.section(@StringRes title: Int, items: List<AmItem>?, r
 }
 
 @Composable
-private fun ResultRow(remote: CiderRemote, item: AmItem, onOpen: (Route) -> Unit) {
+private fun ResultRow(remote: CiderRemote, item: AmItem, onOpen: (Route) -> Unit, onTap: () -> Unit) {
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     val a = item.attributes
@@ -216,9 +223,9 @@ private fun ResultRow(remote: CiderRemote, item: AmItem, onOpen: (Route) -> Unit
             onClick = {
                 val route = item.toRoute()
                 if (route != null) onOpen(route)
-                else scope.launch { runCatching { remote.api.playItem(item.type, item.id) } }
+                else { onTap(); scope.launch { runCatching { remote.api.playItem(item.type, item.id) } } }
             },
-            onLongClick = if (circle) null else ({ menu = true }),
+            onLongClick = if (circle) null else ({ onTap(); menu = true }),
         ) }
         if (!circle) Box(Modifier.align(Alignment.TopEnd)) { PlayMenu(remote, menu, { menu = false }, item.type, item.id) }
     }

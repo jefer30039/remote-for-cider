@@ -44,6 +44,7 @@ fun main(args: Array<String>) = runBlocking {
         "artista" -> {
             val p = api.artistPage(args.getOrElse(1) { "1031397873" })
             println("${p.name} | logo=${p.logo != null} heroTall=${p.heroTall != null} heroWide=${p.heroWide != null} géneros=${p.genres}")
+            println("vídeo cuadrado=${p.videoSquare?.takeLast(40)} espera=${p.videoSquarePreview != null} | panorámico=${p.videoWide?.takeLast(40)} espera=${p.videoWidePreview != null}")
             println("origen=${p.origin} nacimiento=${p.bornOrFormed} bio=${p.bio?.take(80)}")
             println("último: ${p.latest?.name} (${p.latest?.type}) ${p.latest?.subtitle}")
             println("${p.topSongsTitle}: " + p.topSongs.take(3).joinToString { "${it.name} [${it.subtitle}]${if (it.explicit) " E" else ""}" })

@@ -184,9 +184,12 @@ class CiderApi(
     }
 
     // --- Apple Music (proxy, scope library) ---
-    /** Álbumes y playlists añadidos hace poco a la biblioteca. */
-    suspend fun recentlyAdded(limit: Int = 10): List<AmItem> =
-        amapiRaw("v1/me/library/recently-added?limit=${limit.coerceIn(1, 10)}")
+    /**
+     * Álbumes y playlists añadidos hace poco a la biblioteca, de 10 en 10 como mucho. Apple da
+     * hasta 150 (15 páginas): los más antiguos ya no salen, igual que en su app.
+     */
+    suspend fun recentlyAdded(limit: Int = 10, offset: Int = 0): List<AmItem> =
+        amapiRaw("v1/me/library/recently-added?limit=${limit.coerceIn(1, 10)}&offset=$offset")
 
     /** Elementos fijados ("pins") de la biblioteca, con la foto del catálogo para artistas. */
     suspend fun libraryPins(): List<AmItem> = amapiRaw("v1/me/library/pins?include=catalog")

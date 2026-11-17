@@ -160,6 +160,27 @@ fun LibraryHome(
     val showTitle = !layout.expanded
     val homeGrid = rememberLazyGridState()
     cider.remote.app.ui.ScrollToTopEffect { homeGrid.animateScrollToItem(0) }
+    // Agregados recientemente: la primera página sale de la caché y las siguientes, de 10 en 10, al
+    // acercarse al final (Apple da hasta 150, como en su app). Las anteriores solo viven en memoria.
+    val older = remember { mutableStateListOf<AmItem>() }
+    var olderEnd by remember { mutableStateOf(false) }
+    var olderLoading by remember { mutableStateOf(false) }
+    val recentAll = recent?.let { first -> (first + older).distinctBy { it.type + it.id } }
+    val nearEnd by remember {
+        derivedStateOf {
+            val info = homeGrid.layoutInfo
+            (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - 6
+        }
+    }
+    LaunchedEffect(nearEnd, recent != null, older.size) {
+        val first = recent ?: return@LaunchedEffect
+        if (!nearEnd || olderEnd || olderLoading || first.size < RecentPage) return@LaunchedEffect
+        olderLoading = true
+        runCatching { remote.api.recentlyAdded(RecentPage, offset = first.size + older.size) }
+            .onSuccess { page -> older += page; if (page.size < RecentPage) olderEnd = true }
+            .onFailure { olderEnd = true }
+        olderLoading = false
+    }
     LazyVerticalGrid(
         columns = GridCells.Fixed(layout.columns(160.dp, 2)),
         state = homeGrid,
@@ -207,18 +228,24 @@ fun LibraryHome(
                 modifier = Modifier.padding(start = Margin, end = Margin, top = 32.dp, bottom = 12.dp),
             )
         }
-        val items = recent
+        val items = recentAll
         if (items == null) fullBleed { Loading() }
-        else items(items, key = { it.type + it.id }) { item ->
-            AlbumTile(
-                title = item.name,
-                subtitle = item.attributes?.artistName ?: item.attributes?.curatorName,
-                artwork = item.artwork,
-                onClick = { item.toRoute()?.let(onOpen) },
-            )
+        else {
+            items(items, key = { it.type + it.id }) { item ->
+                AlbumTile(
+                    title = item.name,
+                    subtitle = item.attributes?.artistName ?: item.attributes?.curatorName,
+                    artwork = item.artwork,
+                    onClick = { item.toRoute()?.let(onOpen) },
+                )
+            }
+            if (olderLoading) fullBleed { Loading() }
         }
     }
 }
+
+/** Agregados recientemente por petición: el máximo que acepta Apple. */
+private const val RecentPage = 10
 
 /** Fila de categoría: icono monocromo a 29 dp del borde y texto a 66 dp (como Apple Music). */
 @Composable
