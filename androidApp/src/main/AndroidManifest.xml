@@ -21,7 +21,10 @@
             android:name=".ui.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
+            <!-- Girar o cambiar el tamaño de la ventana no recrea la actividad: Compose se adapta solo y
+                 así se conservan las páginas abiertas (las pilas de navegación viven en memoria). -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
