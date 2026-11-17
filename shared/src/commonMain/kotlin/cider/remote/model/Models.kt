@@ -275,5 +275,7 @@ data class SearchCategory(
 /**
  * Datos de catálogo de una carátula: portada animada (`editorialVideo`, listas HLS
  * sin autenticación) y el color de fondo oficial de Apple (`artwork.bgColor`).
+ * [tallPreview]: fotograma fijo del vídeo vertical (`previewFrame`, 3:4): coincide con su primer
+ * fotograma, así que sirve de imagen de espera sin salto al empezar el vídeo.
  */
-data class AnimatedCover(val square: String?, val tall: String?, val bgColor: String? = null)
+data class AnimatedCover(val square: String?, val tall: String?, val bgColor: String? = null, val tallPreview: Artwork? = null)

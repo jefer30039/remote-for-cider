@@ -206,6 +206,12 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         value = AnimatedCovers.load(remote, catalogId)
     }
     val video = if (wide) null else cover?.tall
+    // Con portada animada: dónde cae la carátula fija dentro del vídeo (de ahí sale la pieza al abrir la hoja).
+    val context = LocalContext.current
+    val squareTop by produceState(AnimatedCovers.peekSquareTop(cover), state.track?.artwork?.url, cover) {
+        value = AnimatedCovers.peekSquareTop(cover)
+        if (video != null) value = AnimatedCovers.squareTop(context, state.track?.artwork, cover)
+    }
 
     val root = remember { SheetRoot() }
     Box(
@@ -229,7 +235,10 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         // cola a todo el ancho): con la columna de horizontal sobraba media pantalla y todo quedaba apretado.
         val portrait = androidx.compose.ui.platform.LocalConfiguration.current.let { it.screenHeightDp > it.screenWidthDp }
         if (wide && !portrait) TabletSheet(remote, state, mode, onMode, dismissDrag, cover?.square, sheet, root)
-        else PhoneSheet(remote, state, mode, onMode, background, dismissDrag, video, sheet, root, squareVideo = if (wide) cover?.square else null)
+        else PhoneSheet(
+            remote, state, mode, onMode, background, dismissDrag, video, sheet, root, squareVideo = if (wide) cover?.square else null,
+            videoPreview = if (video != null) cover?.heroPreview() else null, squareTop = squareTop,
+        )
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
             Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp).sheetFade(sheet)
@@ -302,6 +311,9 @@ private fun PhoneSheet(
     root: SheetRoot,
     /** Tablet en vertical: portada animada cuadrada dentro de la tarjeta. */
     squareVideo: String? = null,
+    /** Fotograma fijo del vídeo (imagen de espera) y altura a la que cae en él la carátula fija (fracción del ancho). */
+    videoPreview: String? = null,
+    squareTop: Float? = null,
 ) {
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val fade = Modifier.sheetFade(sheet)
@@ -336,7 +348,10 @@ private fun PhoneSheet(
         AnimatedVisibility(mode == SheetMode.Artwork && video != null, enter = fadeIn(), exit = fadeOut()) {
             // Al abrir y cerrar vuela desde la miniatura, pegada a la izquierda: sale cuadrada, con la carátula fija,
             // y se alarga hasta la hoja entera (vídeo y su reflejo).
-            HeroArtwork(state.track?.artwork, video, width * 4 / 3, dismissDrag, rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp, videoAspect = 4f / 3f))
+            HeroArtwork(
+                state.track?.artwork, video, videoPreview, width * 4 / 3, dismissDrag,
+                rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp, videoAspect = 4f / 3f, squareTop = squareTop),
+            )
         }
         Column(Modifier.fillMaxSize()) {
             // La carátula pasa de la cabecera pequeña (letra/cola) a la tarjeta grande y vuelve
@@ -553,7 +568,7 @@ private val CompactHeaderHeight = 120.dp
  * (en arco, ver [BlurArcCenter]) y un velo oscuro crece desde el borde del vídeo hasta ~0,37 abajo (Apple no oscurece el vídeo).
  */
 @Composable
-private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModifier: Modifier, fly: SheetFly) {
+private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, height: Dp, dragModifier: Modifier, fly: SheetFly) {
     val videoLayer = rememberGraphicsLayer()
     val near = rememberGraphicsLayer()
     val far = rememberGraphicsLayer()
@@ -642,8 +657,12 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModif
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
+                // Imagen de espera: el fotograma fijo del propio vídeo. Es su primer fotograma, así que cuando el
+                // vídeo por fin carga empieza desde la misma imagen; la carátula ampliada (lo que había, y lo que
+                // queda si Apple no da fotograma) tiene otro encuadre y el cambio se veía brusco. Una sola imagen
+                // grande: va debajo del vídeo y se redibuja con cada fotograma suyo.
                 AsyncImage(
-                    model = artwork?.sized(HeroArtworkPx),
+                    model = preview ?: artwork?.sized(HeroArtworkPx),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),

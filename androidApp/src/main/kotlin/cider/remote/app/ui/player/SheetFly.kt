@@ -61,7 +61,9 @@ private fun smooth(x: Float): Float { val t = x.coerceIn(0f, 1f); return t * t *
  * reflejo, 2,2 veces más alta que ancha) se escalaba al ancho de la miniatura y desde el primer
  * fotograma era una columna alta encima del miniplayer y de la barra. Qué cuadrado del vídeo coincide
  * con la carátula cambia con el álbum (el de arriba en "Un Verano Sin Ti", el central en "Short n'
- * Sweet" o "Heavy Serenade"); por eso se enseña la carátula y no un recorte fijo del vídeo.
+ * Sweet" o "Heavy Serenade"); por eso se enseña la carátula y no un recorte fijo del vídeo, y la pieza
+ * sale de ese cuadrado: [squareTop] es a qué altura del vídeo empieza (fracción del ancho; sin él, el
+ * central), para que la carátula se funda con la misma imagen y no con otra desplazada.
  */
 @Composable
 fun rememberSheetFly(
@@ -71,7 +73,8 @@ fun rememberSheetFly(
     corner: Dp? = null,
     restScale: () -> Float = { 1f },
     videoAspect: Float? = null,
-): SheetFly = remember(sheet, root, pinLeft, corner, videoAspect) {
+    squareTop: Float? = null,
+): SheetFly = remember(sheet, root, pinLeft, corner, videoAspect, squareTop) {
     // Estados: la capa se recalcula en cuanto se conocen (el primer fotograma se coloca antes de medirlos).
     var own: LayoutCoordinates? by mutableStateOf(null, referentialEqualityPolicy())
     val outer = Modifier.onGloballyPositioned { own = it }
@@ -98,10 +101,10 @@ fun rememberSheetFly(
         else lerp(thumb.center.x, finalLeft + finalWidth / 2f, 1f - (1f - p) * (1f - p)) - width / 2f
         val top = lerp(thumb.top, finalTop, p)
         if (videoAspect == null) return Flight(scale, left, top, 0f, rest.height)
-        // Lo que se ve de la capa: arriba, del cuadrado central del vídeo a su borde; abajo, lo que quepa
+        // Lo que se ve de la capa: arriba, del cuadrado del vídeo que coincide con la carátula a su borde; abajo, lo que quepa
         // hasta un borde que baja a ritmo constante del de la miniatura al de la pantalla (y un poco
         // más, para que las esquinas redondeadas de abajo salgan de ella).
-        val cropTop = lerp(rest.width * (videoAspect - 1f) / 2f, 0f, smooth(p / FormEnd))
+        val cropTop = lerp(rest.width * (squareTop ?: ((videoAspect - 1f) / 2f)), 0f, smooth(p / FormEnd))
         val bottom = lerp(thumb.bottom, rest.bottom + margin, (p / FormEnd).coerceAtMost(1f))
         val cropBottom = (cropTop + (bottom - top).coerceAtLeast(thumb.height) / scale).coerceAtMost(rest.height)
         return Flight(scale, left, top, cropTop, cropBottom)

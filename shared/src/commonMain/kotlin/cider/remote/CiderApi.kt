@@ -2,6 +2,7 @@ package cider.remote
 
 import cider.remote.model.AmItem
 import cider.remote.model.AnimatedCover
+import cider.remote.model.Artwork
 import cider.remote.model.AmList
 import cider.remote.model.ApiError
 import cider.remote.model.AudioQuality
@@ -218,13 +219,18 @@ class CiderApi(
         val attributes = root["data"]?.jsonObject?.get("data")?.jsonArray?.firstOrNull()?.jsonObject
             ?.get("attributes")?.jsonObject ?: return null
         val video = attributes["editorialVideo"]?.jsonObject
-        fun url(vararg keys: String) = keys.firstNotNullOfOrNull {
-            video?.get(it)?.jsonObject?.get("video")?.jsonPrimitive?.content
+        // La primera variante que traiga vídeo; su `previewFrame` es un fotograma fijo de ese mismo vídeo.
+        fun pick(vararg keys: String) = keys.firstNotNullOfOrNull { key ->
+            video?.get(key)?.jsonObject?.takeIf { it["video"]?.jsonPrimitive?.content != null }
         }
+        val square = pick("motionDetailSquare", "motionSquareVideo1x1")
+        val tall = pick("motionDetailTall", "motionTallVideo3x4")
         val cover = AnimatedCover(
-            square = url("motionDetailSquare", "motionSquareVideo1x1"),
-            tall = url("motionDetailTall", "motionTallVideo3x4"),
+            square = square?.get("video")?.jsonPrimitive?.content,
+            tall = tall?.get("video")?.jsonPrimitive?.content,
             bgColor = attributes["artwork"]?.jsonObject?.get("bgColor")?.jsonPrimitive?.content,
+            tallPreview = (tall?.get("previewFrame") as? kotlinx.serialization.json.JsonObject)
+                ?.get("url")?.jsonPrimitive?.content?.let { Artwork(url = it) },
         )
         return cover.takeIf { it.square != null || it.tall != null || it.bgColor != null }
     }
