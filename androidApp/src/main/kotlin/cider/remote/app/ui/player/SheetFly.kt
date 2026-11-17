@@ -59,10 +59,10 @@ fun rememberSheetFly(
         val base = root.coordinates
         val me = own
         transformOrigin = TransformOrigin(0f, 0f)
-        val flying = sheet.flies && p < 1f && thumb != null && base != null && me != null && base.isAttached && me.isAttached
+        val flying = p < 1f && thumb != null && base != null && me != null && base.isAttached && me.isAttached
         val rest = if (flying) base!!.localBoundingBoxOf(me!!, clipBounds = false) else null
         // Hoja a medio camino y aún sin medidas (su primer fotograma): mejor nada que la carátula en su sitio final.
-        alpha = if (sheet.flies && p < 1f && thumb != null && (base == null || me == null)) 0f else 1f
+        alpha = if (p < 1f && thumb != null && (base == null || me == null)) 0f else 1f
         if (rest == null || rest.width <= 0f || thumb == null) {
             // En su sitio: solo la escala de reposo, desde el centro.
             scaleX = k

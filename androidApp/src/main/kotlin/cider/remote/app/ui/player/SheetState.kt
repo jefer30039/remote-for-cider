@@ -37,13 +37,12 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
     var height = 1f
 
     /**
-     * Transición de Apple Music en Android (teléfono; medida en dos grabaciones de pantalla del
-     * 2026-11-16): la hoja sale de la altura del miniplayer y aparece fundiéndose, su carátula
-     * vuela desde la miniatura del miniplayer hasta su sitio, la página de debajo se oscurece y
-     * la barra y el miniplayer bajan y salen de la pantalla. Todo es función de [progress], así
-     * que también sigue al dedo. En tablet ([flies] = false) la hoja sube opaca desde abajo.
+     * Transición de Apple Music en Android (medida en el teléfono, en dos grabaciones de pantalla
+     * del 2026-11-16; en tablet, lo mismo con su miniplayer): la hoja sale de la altura del
+     * miniplayer y aparece fundiéndose, su carátula vuela desde la miniatura del miniplayer hasta
+     * su sitio, la página de debajo se oscurece y la barra y el miniplayer bajan y salen de la
+     * pantalla. Todo es función de [progress], así que también sigue al dedo.
      */
-    var flies = false
     /** Miniatura del miniplayer en reposo (coordenadas de la raíz); origen del vuelo de la carátula. */
     var thumb: Rect? = null
         private set
@@ -62,18 +61,18 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
         }
     }
 
-    /** Recorrido de la hoja en px: desde el borde superior del miniplayer (o desde abajo, en tablet). */
-    val distance: Float get() = if (flies && thumb != null) miniTop.coerceAtLeast(1f) else height
+    /** Recorrido de la hoja en px: desde el borde superior del miniplayer (o desde abajo, si aún no se ha medido). */
+    val distance: Float get() = if (thumb != null) miniTop.coerceAtLeast(1f) else height
     /** Cuánto está desplazada la hoja hacia abajo ahora, en px. */
     val offsetPx: Float get() = position.value * distance
     /** 0 = cerrada, 1 = abierta. */
     val progress: Float get() = (1f - position.value).coerceIn(0f, 1f)
     /** Opacidad del fondo y los controles de la hoja (la carátula va siempre opaca). */
-    val contentAlpha: Float get() = if (flies) smooth((progress - 0.2f) / 0.6f) else 1f
+    val contentAlpha: Float get() = smooth((progress - 0.2f) / 0.6f)
     /** Oscurecido de la página de debajo. */
-    val scrim: Float get() = if (flies) 0.9f * progress else 0f
+    val scrim: Float get() = 0.9f * progress
     /** Desplazamiento hacia abajo de la barra y el miniplayer, en px: ya han salido con un 30 % de recorrido. */
-    val barsShift: Float get() = if (flies) barsTravel * smooth(progress / 0.3f) else 0f
+    val barsShift: Float get() = barsTravel * smooth(progress / 0.3f)
 
     private fun smooth(x: Float): Float { val t = x.coerceIn(0f, 1f); return t * t * (3f - 2f * t) }
 
@@ -90,7 +89,7 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
     fun open(tap: Boolean = false) {
         target = 0f
         scope.launch {
-            if (tap && flies) {
+            if (tap) {
                 // La hoja tarda 2–4 fotogramas en componerse la primera vez y la curva sale rápida: sin
                 // esperar, cuando por fin se dibuja ya va por más de la mitad y el vuelo no se ve.
                 if (position.value >= 1f) {
@@ -105,7 +104,7 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
     /** Cierra; [released] = al soltar el dedo (muelle), si no con la curva lenta de Apple Music (botón atrás, ir a otra página). */
     fun close(released: Boolean = false) {
         target = 1f
-        scope.launch { position.animateTo(1f, if (flies && !released) Close else Settle) }
+        scope.launch { position.animateTo(1f, if (!released) Close else Settle) }
     }
 
     fun dragBy(px: Float) {

@@ -210,7 +210,7 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         Modifier.fillMaxSize()
             .graphicsLayer { translationY = sheet.offsetPx }
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
-            // En teléfono la hoja aparece fundiéndose (SheetState.flies); la carátula no.
+            // La hoja aparece fundiéndose (ver SheetState); la carátula no.
             .drawBehind { drawRect(background, alpha = sheet.contentAlpha) },
     ) {
         // Referencia para el vuelo de la carátula: la hoja sin su traslación.
@@ -223,7 +223,7 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
             ColorField(palette, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         }
         // Tablet: la portada animada cuadrada dentro de la tarjeta (iPad); el fondo sigue siendo el campo de color.
-        if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag, cover?.square)
+        if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag, cover?.square, sheet, root)
         else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag, video, sheet, root)
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
@@ -436,7 +436,12 @@ private fun PhoneSheet(
  * Abajo, el dispositivo a la izquierda y letra/cola a la derecha.
  */
 @Composable
-private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode, onMode: (SheetMode) -> Unit, dismissDrag: Modifier, squareVideo: String?) {
+private fun TabletSheet(
+    remote: CiderRemote, state: PlayerState, mode: SheetMode, onMode: (SheetMode) -> Unit, dismissDrag: Modifier, squareVideo: String?,
+    sheet: SheetState, root: SheetRoot,
+) {
+    // Al abrir y cerrar la hoja la carátula vuela desde la miniatura del miniplayer y el resto se funde.
+    val fade = Modifier.sheetFade(sheet)
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         val w = maxWidth
         val h = maxHeight
@@ -459,15 +464,20 @@ private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode
         Column(
             Modifier.width(art).offset { IntOffset((center - art / 2).roundToPx(), 0) }.padding(top = topPad),
         ) {
-            Box(Modifier.then(dismissDrag).then(if (panel) Modifier.combinedClickableCompat(onClick = { onMode(SheetMode.Artwork) }) else Modifier)) {
-                val scale by animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
+            val scale = animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
+            // La escala de pausa va en la misma capa que el vuelo.
+            val fly = rememberSheetFly(sheet, root, restScale = { scale.value })
+            Box(
+                Modifier.then(dismissDrag).then(if (panel) Modifier.combinedClickableCompat(onClick = { onMode(SheetMode.Artwork) }) else Modifier)
+                    .then(fly.outer),
+            ) {
                 val cardShape = RoundedCornerShape(10.dp)
                 val artPx = with(androidx.compose.ui.platform.LocalDensity.current) { art.roundToPx() }
                 // Portada animada cuadrada (la de la tarjeta del iPad), con la carátula fija debajo hasta
                 // que el vídeo pinta; se reproduce a la resolución de la tarjeta, sin sonido.
                 AnimatedCover(
                     squareVideo,
-                    Modifier.size(art).graphicsLayer { scaleX = scale; scaleY = scale }
+                    Modifier.size(art).then(fly.inner)
                         .shadow(24.dp, cardShape, ambientColor = Color.Black, spotColor = Color.Black)
                         .clip(cardShape),
                     maxVideoSize = androidx.compose.ui.unit.IntSize(artPx, artPx),
@@ -475,16 +485,18 @@ private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode
                     ArtworkImage(state.track?.artwork, art, px = WideSheetArtworkPx, preview = PreviewArtworkPx, shape = cardShape)
                 }
             }
-            Spacer(Modifier.height(16.dp))
-            TitleRow(remote, state, compact = true)
-            Spacer(Modifier.height(4.dp))
-            Progress(remote, state)
-            Transport(remote, state, compact = true)
-            VolumeRow(remote, state)
+            Column(fade) {
+                Spacer(Modifier.height(16.dp))
+                TitleRow(remote, state, compact = true)
+                Spacer(Modifier.height(4.dp))
+                Progress(remote, state)
+                Transport(remote, state, compact = true)
+                VolumeRow(remote, state)
+            }
         }
         AnimatedVisibility(
             panel, enter = fadeIn(), exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopEnd).width(w * 0.5f).fillMaxHeight().padding(top = 24.dp, bottom = 64.dp, end = 24.dp),
+            modifier = Modifier.align(Alignment.TopEnd).width(w * 0.5f).fillMaxHeight().padding(top = 24.dp, bottom = 64.dp, end = 24.dp).then(fade),
         ) {
             when (mode) {
                 SheetMode.Lyrics -> LyricsView(remote, state, Modifier.fillMaxSize())
@@ -492,10 +504,10 @@ private fun TabletSheet(remote: CiderRemote, state: PlayerState, mode: SheetMode
                 SheetMode.Artwork -> Unit
             }
         }
-        Box(Modifier.align(Alignment.BottomStart).offset { IntOffset((center - art / 2 - 12.dp).roundToPx(), 0) }.padding(bottom = 8.dp)) {
+        Box(Modifier.align(Alignment.BottomStart).offset { IntOffset((center - art / 2 - 12.dp).roundToPx(), 0) }.padding(bottom = 8.dp).then(fade)) {
             OutputButton(remote)
         }
-        Row(Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 8.dp)) {
+        Row(Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 8.dp).then(fade)) {
             ModeButtons(mode, onMode, spacing = 0.dp)
         }
     }

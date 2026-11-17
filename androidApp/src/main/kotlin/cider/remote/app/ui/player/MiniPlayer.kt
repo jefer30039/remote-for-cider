@@ -191,6 +191,8 @@ fun WideMiniPlayer(
     label: (() -> Color)? = null,
     /** Velo del vidrio, leído al dibujar. */
     container: (() -> Color)? = null,
+    /** Para la miniatura de la carátula (origen de su vuelo al abrir la hoja). */
+    thumb: Modifier = Modifier,
 ) {
     val track = state.track
     val openDescription = stringResource(R.string.action_open_now_playing)
@@ -239,7 +241,7 @@ fun WideMiniPlayer(
                 .semantics { contentDescription = openDescription },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ArtworkImage(track?.artwork, 40.dp, shape = RoundedCornerShape(5.dp), px = 160)
+            ArtworkImage(track?.artwork, 40.dp, thumb, shape = RoundedCornerShape(5.dp), px = 160)
             Column(Modifier.padding(start = 12.dp)) {
                 BasicText(track?.name.orEmpty(), style = Apple.type.headline, color = { primary() }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 BasicText(track?.artistName.orEmpty(), style = Apple.type.subhead, color = { secondary() }, maxLines = 1, overflow = TextOverflow.Ellipsis)

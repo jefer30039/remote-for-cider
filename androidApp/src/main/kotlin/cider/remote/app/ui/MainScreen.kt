@@ -242,24 +242,25 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     val pageBackdrop: Backdrop = pageLayer ?: rememberSharedBackdrop(haze)
     PrefetchNowPlaying(remote, state.track)
     val density = androidx.compose.ui.platform.LocalDensity.current
-    // El grupo de vidrio de abajo (barra y miniplayer) queda tapado por la hoja de reproducción, que es
-    // opaca, mientras el borde superior de la hoja está por encima de él (con margen para las esquinas
-    // redondeadas de la hoja y la sombra del vidrio): entonces va con alfa 0 y el sistema no lo dibuja
-    // (sus desenfoques costaban hilo de render en casi todo el recorrido de abrir y cerrar). Se lee
-    // al dibujar, sin recomponer.
+    // Transición de Apple Music al abrir y cerrar la hoja (ver SheetState): el grupo de vidrio de abajo
+    // (barra y miniplayer; en tablet, solo el miniplayer) baja hasta salir de la pantalla en el primer
+    // 30 % del recorrido —lo que mide, con margen para la sombra del vidrio— y la carátula vuela desde
+    // la miniatura del miniplayer. Con más recorrido va con alfa 0 y el sistema no lo dibuja (sus
+    // desenfoques costaban hilo de render); todo se lee al dibujar o al colocar, sin recomponer.
     val bottomGroupPx = with(density) {
         (barBottom + (if (wide) WideMiniHeight else TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp) + 48.dp).toPx()
     }
-    val bottomGroupAlpha = remember(sheet, bottomGroupPx) {
-        { if (sheet.position.value * sheet.height < sheet.height - bottomGroupPx) 0f else 1f }
-    }
-    // Teléfono: transición de Apple Music (ver SheetState.flies). La barra y el miniplayer bajan
-    // hasta salir de la pantalla en el primer 30 % del recorrido y la carátula vuela desde la
-    // miniatura del miniplayer.
-    val thumbInsetPx = with(density) { ((MiniHeight - 32.dp) / 2).toPx() }
-    androidx.compose.runtime.SideEffect {
-        sheet.flies = !wide
-        sheet.barsTravel = bottomGroupPx
+    val thumbInsetPx = with(density) { ((if (wide) WideMiniHeight - WideThumbSize else MiniHeight - 32.dp) / 2).toPx() }
+    androidx.compose.runtime.SideEffect { sheet.barsTravel = bottomGroupPx }
+    // Origen del vuelo de la carátula: la miniatura del miniplayer en reposo (se descuenta lo que hayan
+    // bajado las barras). En cuanto la hoja se mueve, la miniatura se oculta: la que se ve es la que vuela.
+    val thumbModifier = remember(sheet, thumbInsetPx) {
+        Modifier.onGloballyPositioned { c ->
+            // Sin recortar a la pantalla (boundsInRoot recorta): con la hoja abierta las barras están fuera.
+            val at = c.positionInRoot()
+            val top = at.y - sheet.barsShift.roundToInt()
+            sheet.setThumb(Rect(at.x, top, at.x + c.size.width, top + c.size.height), miniTop = top - thumbInsetPx)
+        }.graphicsLayer { alpha = if (sheet.position.value < 0.97f) 0f else 1f }
     }
     // Fondo de vidrio para todo lo que cuelga de aquí (también los ⋮ y sus menús, que viven fuera de la página).
     CompositionLocalProvider(LocalGlassBackdrop provides haze) {
@@ -522,10 +523,12 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             }
             if (hasTrack) WideMiniPlayer(
                 remote, state, haze, onOpen = openSheet,
-                label = { miniLabel.value }, container = { miniVeil.value },
+                label = { miniLabel.value }, container = { miniVeil.value }, thumb = thumbModifier,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = barBottom)
                     .widthIn(max = WideMiniMaxWidth).fillMaxWidth().padding(horizontal = SideMargin)
-                    .graphicsLayer { alpha = bottomGroupAlpha() }.sheetDrag(sheet),
+                    // Se coloca (no una capa trasladada): así el vidrio sigue leyendo lo que tiene detrás.
+                    .offset { IntOffset(0, sheet.barsShift.roundToInt()) }
+                    .graphicsLayer { alpha = if (sheet.progress >= 0.3f) 0f else 1f }.sheetDrag(sheet),
             )
             AnimatedVisibility(sidebar, enter = slideInHorizontally { -it }, exit = slideOutHorizontally { -it }) {
                 Sidebar(tab, haze, connection.endpoint.host, onSelect = { select(it); sidebar = false }, onClose = { sidebar = false }, onForget = onForget)
@@ -548,14 +551,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                 if (hasTrack) MiniPlayer(
                     remote, state, onOpen = { openSheet(SheetMode.Artwork) }, haze = haze,
                     compact = { minimize.value }, label = { miniLabel.value }, container = { miniVeil.value },
-                    // Origen del vuelo de la carátula: su sitio en reposo (se descuenta lo que hayan bajado las
-                    // barras). En cuanto la hoja se mueve, la miniatura se oculta: la que se ve es la que vuela.
-                    thumb = Modifier.onGloballyPositioned { c ->
-                        // Sin recortar a la pantalla (boundsInRoot recorta): con la hoja abierta las barras están fuera.
-                        val at = c.positionInRoot()
-                        val top = at.y - sheet.barsShift.roundToInt()
-                        sheet.setThumb(Rect(at.x, top, at.x + c.size.width, top + c.size.height), miniTop = top - thumbInsetPx)
-                    }.graphicsLayer { alpha = if (sheet.position.value < 0.97f) 0f else 1f },
+                    thumb = thumbModifier,
                     modifier = Modifier.height(MiniHeight).layout { measurable, constraints ->
                         val p = minimize.value.coerceIn(0f, 1f)
                         val shift = (pillShift.toPx() * p).roundToInt()
@@ -583,8 +579,8 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
       }
       }
 
-        // La página se oscurece bajo la hoja mientras sube (teléfono; la hoja es translúcida al principio).
-        if (!wide) Box(Modifier.fillMaxSize().drawBehind { val a = sheet.scrim; if (a > 0f) drawRect(Color.Black, alpha = a) })
+        // La página se oscurece bajo la hoja mientras sube (la hoja es translúcida al principio).
+        Box(Modifier.fillMaxSize().drawBehind { val a = sheet.scrim; if (a > 0f) drawRect(Color.Black, alpha = a) })
 
         // Deslizar el miniplayer hacia arriba la abre siguiendo al dedo (Apple Music).
         // Desde la hoja, "ir al álbum/artista" la cierra y abre la página en la pestaña actual.
@@ -596,6 +592,8 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
 }
 
 private val WideMiniHeight = 63.dp
+/** Miniatura de la carátula en el miniplayer de tablet. */
+private val WideThumbSize = 40.dp
 
 private val AlwaysHidden: androidx.compose.runtime.State<Boolean> = androidx.compose.runtime.mutableStateOf(true)
 
