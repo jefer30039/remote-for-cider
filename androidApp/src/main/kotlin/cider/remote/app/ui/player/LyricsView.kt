@@ -104,7 +104,7 @@ private fun PlainLyrics(lyrics: Lyrics) {
     val style = lyricStyle()
     LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 240.dp), modifier = Modifier.fillMaxWidth()) {
         items(lyrics.lines) { line ->
-            BasicText(line.text, style = style.copy(color = Color.White), modifier = Modifier.fillMaxWidth().padding(horizontal = SidePadding, vertical = 9.dp))
+            BasicText(line.text, style = style.copy(color = Color.White), modifier = Modifier.fillMaxWidth().padding(horizontal = LyricsSidePadding, vertical = 9.dp))
         }
     }
 }
@@ -118,7 +118,8 @@ private fun lyricStyle() = Apple.type.title1.copy(
 )
 
 /** Margen izquierdo (Apple: 33 dp) y separación entre líneas (Apple: 34–36 dp). */
-private val SidePadding = 33.dp
+/** Margen lateral del texto de la letra dentro de su vista. */
+internal val LyricsSidePadding = 33.dp
 private val LineGap = 34.dp
 
 /** La lista sube un poco antes de que empiece la línea (la nueva ya está en su sitio al cantarse). */
@@ -188,7 +189,7 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
     val style = lyricStyle()
     val density = androidx.compose.ui.platform.LocalDensity.current
     val gapPx = with(density) { LineGap.toPx() }
-    val sidePx = with(density) { SidePadding.roundToPx() }
+    val sidePx = with(density) { LyricsSidePadding.roundToPx() }
     val blurUnit = with(density) { 1.4.dp.toPx() }
     val anchorTopPx = anchorTop?.let { with(density) { it.toPx() } }
 

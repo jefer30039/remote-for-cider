@@ -225,8 +225,11 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
             ColorField(palette, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         }
         // Tablet: la portada animada cuadrada dentro de la tarjeta (iPad); el fondo sigue siendo el campo de color.
-        if (wide) TabletSheet(remote, state, mode, onMode, dismissDrag, cover?.square, sheet, root)
-        else PhoneSheet(remote, state, mode, onMode, background, dismissDrag, video, sheet, root)
+        // En vertical usa la disposición del teléfono (carátula grande arriba, controles abajo y la letra o la
+        // cola a todo el ancho): con la columna de horizontal sobraba media pantalla y todo quedaba apretado.
+        val portrait = androidx.compose.ui.platform.LocalConfiguration.current.let { it.screenHeightDp > it.screenWidthDp }
+        if (wide && !portrait) TabletSheet(remote, state, mode, onMode, dismissDrag, cover?.square, sheet, root)
+        else PhoneSheet(remote, state, mode, onMode, background, dismissDrag, video, sheet, root, squareVideo = if (wide) cover?.square else null)
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
             Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp).sheetFade(sheet)
@@ -297,9 +300,18 @@ private fun PhoneSheet(
     video: String?,
     sheet: SheetState,
     root: SheetRoot,
+    /** Tablet en vertical: portada animada cuadrada dentro de la tarjeta. */
+    squareVideo: String? = null,
 ) {
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val fade = Modifier.sheetFade(sheet)
+    // Margen lateral de título y controles: más ancho en tablet (en vertical), donde además todo va
+    // alineado a él. En teléfono, las medidas de Apple Music: la tarjeta de la carátula 9 dp más afuera y
+    // la cabecera y la cola con sus márgenes propios.
+    val tablet = LocalWindowLayout.current.expanded
+    val edge = if (tablet) 64.dp else 33.dp
+    // Lo que hay que añadir a una pieza cuyo contenido empieza a [inner] del borde para llevarlo a [edge].
+    fun extra(inner: Dp): Dp = if (tablet) edge - inner else 0.dp
     // Con la letra a la vista y sonando, los controles se repliegan a los 4 s sin tocar nada y la
     // letra ocupa la pantalla (Apple Music); cualquier toque los devuelve.
     var touches by remember { mutableIntStateOf(0) }
@@ -362,21 +374,24 @@ private fun PhoneSheet(
                         // Sin vídeo, tarjeta centrada a 24 dp de los lados y 44 dp sobre el título.
                         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().then(dismissDrag).statusBarsPadding()) {
                             if (video == null) {
-                                val side = minOf(width - 48.dp, maxHeight - 44.dp - 34.dp)
+                                val side = minOf(width - (if (tablet) edge else 24.dp) * 2, maxHeight - 44.dp - 34.dp)
                                 // Como iOS: la carátula se encoge al pausar y vuelve con un muelle al reproducir.
                                 val scale = animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
                                 // Al abrir y cerrar la hoja vuela desde la miniatura del miniplayer (la escala de pausa va en la misma capa).
                                 val fly = rememberSheetFly(sheet, root, restScale = { scale.value })
                                 Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp).then(shared).then(fly.outer)) {
-                                    ArtworkImage(
-                                        state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = RoundedCornerShape(10.dp),
-                                        modifier = fly.inner
-                                            .shadow(24.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black),
-                                    )
+                                    val cardShape = RoundedCornerShape(10.dp)
+                                    val card = fly.inner.shadow(24.dp, cardShape, ambientColor = Color.Black, spotColor = Color.Black)
+                                    if (squareVideo != null) {
+                                        val sidePx = with(LocalDensity.current) { side.roundToPx() }
+                                        AnimatedCover(squareVideo, Modifier.size(side).then(card).clip(cardShape), maxVideoSize = IntSize(sidePx, sidePx)) {
+                                            ArtworkImage(state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = cardShape)
+                                        }
+                                    } else ArtworkImage(state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = cardShape, modifier = card)
                                 }
                             }
                         }
-                        Box(Modifier.padding(start = 33.dp, end = 22.dp).then(fade)) { TitleRow(remote, state) }
+                        Box(Modifier.padding(start = edge, end = edge - 11.dp).then(fade)) { TitleRow(remote, state) }
                     }
                     }
                     SheetMode.Lyrics, SheetMode.Queue -> Box(Modifier.fillMaxSize()) {
@@ -388,7 +403,7 @@ private fun PhoneSheet(
                             val fadeTo = with(LocalDensity.current) { (statusTop + CompactHeaderHeight + 14.dp).toPx() }
                             LyricsView(
                                 remote, state,
-                                Modifier.fillMaxSize().then(fade)
+                                Modifier.fillMaxSize().padding(horizontal = extra(LyricsSidePadding)).then(fade)
                                     .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
                                     .drawWithContent {
                                         drawContent()
@@ -399,10 +414,10 @@ private fun PhoneSheet(
                                     },
                                 anchorTop = statusTop + CompactHeaderHeight + 34.dp,
                             )
-                        } else Column(Modifier.fillMaxSize().padding(top = statusTop + CompactHeaderHeight).then(fade)) {
+                        } else Column(Modifier.fillMaxSize().padding(top = statusTop + CompactHeaderHeight).padding(start = extra(8.dp), end = extra(18.dp)).then(fade)) {
                             QueuePanel(remote, state, Modifier.fillMaxSize())
                         }
-                        Box(Modifier.statusBarsPadding()) {
+                        Box(Modifier.statusBarsPadding().padding(start = extra(28.dp), end = extra(24.dp))) {
                             CompactHeader(
                                 remote, state, dismissDrag, artwork = shared, onArtwork = { onMode(SheetMode.Artwork) },
                                 fly = rememberSheetFly(sheet, root), fade = fade,
@@ -417,7 +432,7 @@ private fun PhoneSheet(
                 enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
                 exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
             ) {
-                Column(Modifier.padding(horizontal = 33.dp).then(fade)) {
+                Column(Modifier.padding(horizontal = edge).then(fade)) {
                     Spacer(Modifier.height(8.dp))
                     Progress(remote, state)
                     Spacer(Modifier.height(10.dp))
@@ -433,9 +448,10 @@ private fun PhoneSheet(
 }
 
 /**
- * Tablet (Apple Music en iPad): columna con la carátula y los controles; sola y
+ * Tablet en horizontal (Apple Music en iPad): columna con la carátula y los controles; sola y
  * centrada en modo carátula, a la izquierda con la letra o la cola a la derecha.
  * Abajo, el dispositivo a la izquierda y letra/cola a la derecha.
+ * En vertical la tablet usa la disposición del teléfono ([PhoneSheet]).
  */
 @Composable
 private fun TabletSheet(
@@ -448,21 +464,14 @@ private fun TabletSheet(
         val w = maxWidth
         val h = maxHeight
         val panel = mode != SheetMode.Artwork
-        // Vertical (iPad en vertical): carátula grande (72 % del ancho) y la columna centrada en el
-        // alto, encima de los botones de abajo; antes quedaba limitada al 40 % del ancho, pegada arriba
-        // y con media pantalla vacía. Con letra o cola, la disposición de horizontal.
-        val portrait = h > w
-        // Proporciones del iPad en horizontal: carátula 0,54 del alto, columna centrada en el 23 % del ancho.
-        val landscapeArt = minOf(h * 0.54f, h - 340.dp, w * 0.4f).coerceAtLeast(160.dp)
-        val art by animateDpAsState(
-            if (portrait && !panel) minOf(w * 0.72f, h - 460.dp).coerceAtLeast(160.dp) else landscapeArt, label = "caratula",
-        )
-        val center by animateDpAsState(if (panel) w * 0.23f else w / 2, label = "columna")
-        // Alto aproximado de lo que va bajo la carátula (título, progreso, controles, volumen).
-        val below = 250.dp
-        val topPad by animateDpAsState(
-            if (portrait && !panel) ((h - 64.dp - art - below) / 2).coerceAtLeast(24.dp) else h * 0.07f, label = "arriba",
-        )
+        // Proporciones del iPad en horizontal: carátula 0,54 del alto.
+        val art = minOf(h * 0.54f, h - 340.dp, w * 0.4f).coerceAtLeast(160.dp)
+        // Con letra o cola, la columna va centrada en la mitad izquierda y el panel empieza en el centro:
+        // el margen del borde a la carátula, el de la carátula a la letra y el de la letra al borde
+        // derecho son iguales (antes la columna quedaba más cerca del borde que de la letra).
+        val margin = ((w / 2 - art) / 2).coerceAtLeast(24.dp)
+        val center by animateDpAsState(if (panel) margin + art / 2 else w / 2, label = "columna")
+        val topPad = h * 0.07f
         Column(
             Modifier.width(art).offset { IntOffset((center - art / 2).roundToPx(), 0) }.padding(top = topPad),
         ) {
@@ -496,13 +505,19 @@ private fun TabletSheet(
                 VolumeRow(remote, state)
             }
         }
-        AnimatedVisibility(
-            panel, enter = fadeIn(), exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopEnd).width(w * 0.5f).fillMaxHeight().padding(top = 24.dp, bottom = 64.dp, end = 24.dp).then(fade),
-        ) {
+        AnimatedVisibility(panel, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize().padding(bottom = 64.dp).then(fade)) {
             when (mode) {
-                SheetMode.Lyrics -> LyricsView(remote, state, Modifier.fillMaxSize())
-                SheetMode.Queue -> QueuePanel(remote, state, Modifier.fillMaxSize())
+                // La línea activa de la letra y el título de la cola arrancan a la altura del borde superior
+                // de la carátula; el texto empieza en el centro de la pantalla y acaba a `margin` del borde.
+                SheetMode.Lyrics -> LyricsView(
+                    remote, state,
+                    Modifier.fillMaxSize().padding(start = w / 2 - LyricsSidePadding, end = (margin - LyricsSidePadding).coerceAtLeast(0.dp)),
+                    anchorTop = (topPad - 8.dp).coerceAtLeast(0.dp),
+                )
+                SheetMode.Queue -> QueuePanel(
+                    remote, state,
+                    Modifier.fillMaxSize().padding(start = w / 2 - 8.dp, end = (margin - 18.dp).coerceAtLeast(0.dp), top = (topPad - 18.dp).coerceAtLeast(0.dp)),
+                )
                 SheetMode.Artwork -> Unit
             }
         }
