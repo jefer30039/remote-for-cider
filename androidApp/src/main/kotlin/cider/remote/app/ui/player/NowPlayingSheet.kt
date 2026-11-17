@@ -414,7 +414,12 @@ private fun PhoneSheet(
                                     },
                                 anchorTop = statusTop + CompactHeaderHeight + 34.dp,
                             )
-                        } else Column(Modifier.fillMaxSize().padding(top = statusTop + CompactHeaderHeight).padding(start = extra(8.dp), end = extra(18.dp)).then(fade)) {
+                        } else Column(
+                            // La lista trae 8 dp a la izquierda y sus asas quedan a 18 dp del borde: en teléfono se
+                            // alinea con la cabecera (carátula a 28 dp, botón "…" a 24 dp); antes iba pegada al borde.
+                            Modifier.fillMaxSize().padding(top = statusTop + CompactHeaderHeight)
+                                .padding(start = if (tablet) extra(8.dp) else 20.dp, end = if (tablet) extra(18.dp) else 6.dp).then(fade),
+                        ) {
                             QueuePanel(remote, state, Modifier.fillMaxSize())
                         }
                         Box(Modifier.statusBarsPadding().padding(start = extra(28.dp), end = extra(24.dp))) {

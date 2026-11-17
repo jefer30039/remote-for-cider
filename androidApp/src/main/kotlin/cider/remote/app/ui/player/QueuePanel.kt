@@ -91,7 +91,8 @@ fun QueuePanel(remote: CiderRemote, state: PlayerState, modifier: Modifier = Mod
     LazyColumn(state = listState, modifier = modifier) {
         item(key = "cabecera") {
             Row(
-                Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, bottom = 8.dp),
+                // A la derecha, los botones acaban donde las asas de las filas (a 18 dp del borde de la lista).
+                Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.up_next), style = Apple.type.title3, color = Color.White, modifier = Modifier.weight(1f))
