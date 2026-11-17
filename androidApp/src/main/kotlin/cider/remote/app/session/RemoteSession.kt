@@ -121,6 +121,8 @@ class RemoteSession(
         foreground = true
         val paired = state.value as? SessionState.Paired ?: return
         val endpoint = paired.connection.endpoint
+        // Lo que cambió con la app cerrada (otra canción, cola vaciada) sin esperar a un evento.
+        paired.remote.refresh()
         scope.launch {
             if (finder.answers(endpoint.host, endpoint.port, paired.connection.token)) return@launch
             relocate(paired.connection)

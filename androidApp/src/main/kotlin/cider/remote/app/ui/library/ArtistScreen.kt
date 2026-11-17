@@ -1,6 +1,7 @@
 package cider.remote.app.ui.library
 
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -198,8 +199,10 @@ private fun Hero(page: ArtistPage?, fallbackName: String, bg: androidx.compose.r
             val model = if (wide) hero?.cropped(2000, 909) else hero?.cropped(1200, 1296)
             val video = if (wide) page?.videoWide else page?.videoSquare
             val preview = if (wide) page?.videoWidePreview?.sized(2000, 1125) else page?.videoSquarePreview?.sized(1200, 1200)
+            // Recortado a la cabecera: el vídeo se amplía para llenarla y, sin recorte, en tablet asomaba
+            // por debajo del fundido como una franja gris.
             cider.remote.app.ui.components.AnimatedCover(
-                video, Modifier.fillMaxSize(),
+                video, Modifier.fillMaxSize().clipToBounds(),
                 maxVideoSize = if (wide) androidx.compose.ui.unit.IntSize(2560, 1440) else androidx.compose.ui.unit.IntSize(1440, 1440),
                 pool = player,
             ) {

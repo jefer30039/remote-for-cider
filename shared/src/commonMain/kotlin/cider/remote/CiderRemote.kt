@@ -97,6 +97,16 @@ class CiderRemote(
                 // El último valor gana: el slider puede mandar muchos seguidos.
                 volumeRequests.consumeAsFlow().collect { v -> runCommand { api.setVolume(v) } }
             }
+            launch {
+                // En pausa Cider no manda nada, ni siquiera si la cola se vacía o cambia la canción desde
+                // otro sitio (probado con clear-queue: ningún evento). Se relee el estado cada 15 s; sonando
+                // no hace falta (llega el tiempo cada segundo).
+                while (true) {
+                    delay(15_000)
+                    val s = _state.value
+                    if (s.link == Link.Online && !s.isPlaying) loadSnapshot()
+                }
+            }
             events.stream().collect { item ->
                 when (item) {
                     is CiderEvents.Item.State -> onSocketState(item.state)
@@ -297,6 +307,8 @@ class CiderRemote(
             }
             "playbackStatus.nowPlayingItemDidChange" -> {
                 val track = CiderJson.decodeFromJsonElement<Track>(data)
+                // Sin canción (cola vaciada): Cider manda atributos vacíos; el resumen da `nowPlaying: null`.
+                if (track.name.isBlank()) { loadSnapshot(); return }
                 _state.update {
                     it.copy(
                         track = track,
@@ -309,7 +321,10 @@ class CiderRemote(
             }
             "playbackStatus.playbackStateDidChange" -> {
                 val obj = data as? JsonObject ?: return
-                val playing = obj["state"]?.jsonPrimitive?.content == "playing"
+                val stateName = obj["state"]?.jsonPrimitive?.content
+                // Parado: puede que ya no haya canción (cola vaciada); el resumen lo dice.
+                if (stateName == "stopped") { loadSnapshot(); return }
+                val playing = stateName == "playing"
                 val anchor = obj["anchor"] as? JsonObject
                 val position = anchor?.get("currentTime")?.jsonPrimitive?.doubleOrNull
                 _state.update {
@@ -343,6 +358,8 @@ class CiderRemote(
                         queueTotal = obj["total"]?.jsonPrimitive?.intOrNull ?: it.queueTotal,
                     )
                 }
+                // Cola vacía: la canción actual también se fue (el miniplayer pasa a "Nada sonando").
+                if (obj["total"]?.jsonPrimitive?.intOrNull == 0) loadSnapshot()
                 _signals.emit(RemoteSignal.QueueChanged)
             }
         }
