@@ -334,8 +334,9 @@ private fun PhoneSheet(
         val width = maxWidth
         // Portada animada: 3:4 a todo el ancho, detrás de todo y fundida con el fondo.
         AnimatedVisibility(mode == SheetMode.Artwork && video != null, enter = fadeIn(), exit = fadeOut()) {
-            // Al abrir y cerrar vuela entera (vídeo y su reflejo) desde la miniatura, pegada a la izquierda.
-            HeroArtwork(state.track?.artwork, video, width * 4 / 3, dismissDrag, rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp))
+            // Al abrir y cerrar vuela desde la miniatura, pegada a la izquierda: sale cuadrada, con la carátula fija,
+            // y se alarga hasta la hoja entera (vídeo y su reflejo).
+            HeroArtwork(state.track?.artwork, video, width * 4 / 3, dismissDrag, rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp, videoAspect = 4f / 3f))
         }
         Column(Modifier.fillMaxSize()) {
             // La carátula pasa de la cabecera pequeña (letra/cola) a la tarjeta grande y vuelve
@@ -658,6 +659,14 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, height: Dp, dragModif
                 onDrawBehind { if (vh < 1f) drawRect(veil) }
             },
         )
+        // Al salir del miniplayer (y al volver a él) la pieza es su miniatura: la carátula fija tapa el
+        // vídeo y se funde con el recorrido; en reposo va con alfa 0 y no se dibuja.
+        fly.cover?.let { cover ->
+            Box(Modifier.fillMaxWidth().aspectRatio(1f).then(cover)) {
+                AsyncImage(model = artwork?.sized(PreviewArtworkPx), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                AsyncImage(model = artwork?.sized(HeroArtworkPx), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
     }
     }
 }
