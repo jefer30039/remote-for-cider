@@ -154,4 +154,8 @@
     <string name="action_show_artwork">Show artwork</string>
     <string name="action_show_complete_album">Show Complete Album</string>
     <string name="status_tap_to_search">Tap to find your computer</string>
+    <string name="pairing_bridge_title">Is the bridge installed?</string>
+    <string name="pairing_bridge_body">Cider only accepts connections from the computer itself. A small bridge on your computer lets this device reach it: download it, run the installer and search again.</string>
+    <string name="pairing_bridge_action">How to install the bridge</string>
+    <string name="pairing_bridge_url">https://github.com/jefer30039/remote-for-cider#1-install-the-bridge-on-the-computer</string>
 </resources>

@@ -37,6 +37,11 @@ android {
     }
 
     buildTypes {
+        // La de depuración se instala como app aparte ("….debug"): convive con la publicada sin tocar su
+        // emparejamiento (antes no se podía instalar encima: otra firma).
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             // R8: menos código que cargar y compilar; la primera apertura de las pantallas va más suave.
             isMinifyEnabled = true

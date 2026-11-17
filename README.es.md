@@ -42,10 +42,13 @@ Control remoto nativo para Android de [Cider](https://cider.sh), el cliente de A
 
 La API de Cider solo escucha en `127.0.0.1:10767`, así que otros dispositivos no llegan. El puente reenvía el puerto **10768** de tu red hacia ella. (No se puede usar el 10767: Cider lo comprueba al arrancar y, si está ocupado, se va a un puerto aleatorio.)
 
-**Windows** (proxy de puertos integrado, no hay que instalar nada). En PowerShell como administrador:
+Descarga el puente de tu sistema desde la [última versión](https://github.com/jefer30039/remote-for-cider/releases/latest/) y descomprímelo:
+[Windows](https://github.com/jefer30039/remote-for-cider/releases/latest/download/remote-for-cider-bridge-windows.zip) · [Linux](https://github.com/jefer30039/remote-for-cider/releases/latest/download/remote-for-cider-bridge-linux.zip) · [macOS](https://github.com/jefer30039/remote-for-cider/releases/latest/download/remote-for-cider-bridge-macos.zip). Después ejecuta el instalador desde la carpeta descomprimida. (Los mismos scripts están también en la carpeta `bridge/` de este repositorio.)
+
+**Windows** (proxy de puertos integrado, no hay que instalar nada). En PowerShell como administrador, dentro de la carpeta:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File bridge\windows\install-bridge.ps1
+powershell -ExecutionPolicy Bypass -File install-bridge.ps1
 ```
 
 Solo acepta conexiones desde redes marcadas como *Privadas*.
@@ -53,17 +56,17 @@ Solo acepta conexiones desde redes marcadas como *Privadas*.
 **Linux** (servicio de usuario de systemd; necesita `socat`):
 
 ```sh
-bridge/linux/install.sh                      # todas las interfaces
-bridge/linux/install.sh --interface wlp3s0   # solo esa interfaz (recomendado en laptops)
+./install.sh                      # todas las interfaces
+./install.sh --interface wlp3s0   # solo esa interfaz (recomendado en laptops)
 ```
 
 **macOS** (LaunchAgent; necesita `brew install socat`):
 
 ```sh
-bridge/macos/install.sh
+./install.sh
 ```
 
-Cada carpeta tiene su script para desinstalar.
+Cada descarga trae su script para desinstalar.
 
 ### 2. Instalar la app
 
@@ -82,7 +85,7 @@ Abre la app. Busca Cider en tu red y rellena la dirección. Toca **Conectar** y 
 
 ## Opcional: graves con EasyEffects (Linux)
 
-`bridge/linux/install.sh --with-easyeffects` instala un pequeño servicio en el puerto 10769 que permite a la app cambiar EasyEffects entre dos presets de salida que crees tú: **Bocina** (graves activados) y **Normal**. El interruptor aparece en la app en el botón del dispositivo de reproducción. El servicio solo acepta peticiones con un token que Cider acepte.
+`./install.sh --with-easyeffects` (desde la descarga del puente para Linux) instala un pequeño servicio en el puerto 10769 que permite a la app cambiar EasyEffects entre dos presets de salida que crees tú: **Bocina** (graves activados) y **Normal**. El interruptor aparece en la app en el botón del dispositivo de reproducción. El servicio solo acepta peticiones con un token que Cider acepte.
 
 ## Problemas frecuentes
 

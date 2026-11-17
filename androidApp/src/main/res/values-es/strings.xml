@@ -156,4 +156,8 @@
     <string name="action_show_artwork">Ver carátula</string>
     <string name="action_show_complete_album">Ver álbum completo</string>
     <string name="status_tap_to_search">Toca para buscar el PC</string>
+    <string name="pairing_bridge_title">¿Instalaste el puente?</string>
+    <string name="pairing_bridge_body">Cider solo acepta conexiones desde la propia computadora. Un pequeño puente en la computadora deja que este dispositivo llegue a ella: descárgalo, ejecuta el instalador y vuelve a buscar.</string>
+    <string name="pairing_bridge_action">Cómo instalar el puente</string>
+    <string name="pairing_bridge_url">https://github.com/jefer30039/remote-for-cider/blob/main/README.es.md#1-instalar-el-puente-en-la-computadora</string>
 </resources>

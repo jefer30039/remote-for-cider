@@ -42,10 +42,13 @@ A native Android remote for [Cider](https://cider.sh), the Apple Music desktop c
 
 Cider's API only listens on `127.0.0.1:10767`, so other devices can't reach it. The bridge forwards port **10768** from your network to it. (Port 10767 can't be reused: Cider checks it at startup and moves to a random port if it's taken.)
 
-**Windows** (built-in port proxy, nothing to install). In PowerShell as administrator:
+Download the bridge for your system from the [latest release](https://github.com/jefer30039/remote-for-cider/releases/latest/) and unzip it:
+[Windows](https://github.com/jefer30039/remote-for-cider/releases/latest/download/remote-for-cider-bridge-windows.zip) · [Linux](https://github.com/jefer30039/remote-for-cider/releases/latest/download/remote-for-cider-bridge-linux.zip) · [macOS](https://github.com/jefer30039/remote-for-cider/releases/latest/download/remote-for-cider-bridge-macos.zip). Then run the installer from the unzipped folder. (The same scripts are also in the `bridge/` folder of this repository.)
+
+**Windows** (built-in port proxy, nothing to install). In PowerShell as administrator, inside the folder:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File bridge\windows\install-bridge.ps1
+powershell -ExecutionPolicy Bypass -File install-bridge.ps1
 ```
 
 It only allows connections from networks marked as *Private*.
@@ -53,17 +56,17 @@ It only allows connections from networks marked as *Private*.
 **Linux** (systemd user service; needs `socat`):
 
 ```sh
-bridge/linux/install.sh                      # all interfaces
-bridge/linux/install.sh --interface wlp3s0   # only that interface (recommended on laptops)
+./install.sh                      # all interfaces
+./install.sh --interface wlp3s0   # only that interface (recommended on laptops)
 ```
 
 **macOS** (LaunchAgent; needs `brew install socat`):
 
 ```sh
-bridge/macos/install.sh
+./install.sh
 ```
 
-Each folder has an uninstall script.
+Each download has an uninstall script.
 
 ### 2. Install the app
 
@@ -82,7 +85,7 @@ Open the app. It looks for Cider on your network and fills in the address. Tap *
 
 ## Optional: EasyEffects bass toggle (Linux)
 
-`bridge/linux/install.sh --with-easyeffects` installs a small helper on port 10769 that lets the app switch EasyEffects between two output presets you create: **Bocina** (bass on) and **Normal**. The switch appears in the app under the playback device button. The helper only accepts requests with a token Cider accepts.
+`./install.sh --with-easyeffects` (from the Linux bridge download) installs a small helper on port 10769 that lets the app switch EasyEffects between two output presets you create: **Bocina** (bass on) and **Normal**. The switch appears in the app under the playback device button. The helper only accepts requests with a token Cider accepts.
 
 ## Troubleshooting
 

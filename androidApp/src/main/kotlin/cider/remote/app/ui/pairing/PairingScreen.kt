@@ -75,10 +75,13 @@ fun PairingScreen(onPaired: (SavedConnection) -> Unit) {
     val finder = LocalContext.current.app.pcFinder
     var hostEdited by rememberSaveable { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
+    // Sin PC a la vista (búsqueda sin resultado o conexión fallida): lo más probable es que falte el puente.
+    var bridgeHint by rememberSaveable { mutableStateOf(false) }
     fun scan(force: Boolean) = scope.launch {
         scanning = true
         val found = finder.find(port.toIntOrNull() ?: BRIDGE_PORT, token = null)
         scanning = false
+        bridgeHint = found == null
         if (found != null && (force || !hostEdited)) host = found
         else if (found == null && force) message = resources.getString(R.string.pairing_not_found_network)
     }
@@ -99,7 +102,7 @@ fun PairingScreen(onPaired: (SavedConnection) -> Unit) {
                 is PairingResult.TryLater -> result.retryAfterSec
                     ?.let { resources.getString(R.string.pairing_try_later_seconds, it) }
                     ?: resources.getString(R.string.pairing_try_later)
-                is PairingResult.Failed -> resources.getString(R.string.pairing_failed, host, port)
+                is PairingResult.Failed -> { bridgeHint = true; resources.getString(R.string.pairing_failed, host, port) }
             }
         }
     }
@@ -135,6 +138,7 @@ fun PairingScreen(onPaired: (SavedConnection) -> Unit) {
                 Text(it, style = Apple.type.footnote, color = Apple.colors.label)
             }
         }
+        if (bridgeHint && !scanning && !waiting) BridgeHint()
         Spacer(Modifier.weight(1f))
         if (waiting) {
             Row(
@@ -183,6 +187,28 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit, type
             cursorBrush = SolidColor(Apple.colors.accent),
             keyboardOptions = KeyboardOptions(keyboardType = type),
             modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/** Tarjeta para quien no encuentra el PC: casi siempre falta el puente (sin él Cider no es accesible por la red). */
+@Composable
+private fun BridgeHint() {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val url = stringResource(R.string.pairing_bridge_url)
+    Column(
+        Modifier.padding(top = 20.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .background(if (Apple.colors.isDark) Apple.colors.fill else Color.White).padding(16.dp),
+    ) {
+        Text(stringResource(R.string.pairing_bridge_title), style = Apple.type.headline, color = Apple.colors.label)
+        Text(
+            stringResource(R.string.pairing_bridge_body), style = Apple.type.subhead, color = Apple.colors.secondaryLabel,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Text(
+            stringResource(R.string.pairing_bridge_action), style = Apple.type.body, color = Apple.colors.accentText,
+            modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(6.dp))
+                .combinedClickableCompat(onClick = { uriHandler.openUri(url) }),
         )
     }
 }
