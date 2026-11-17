@@ -178,14 +178,14 @@ private fun MiniButton(
 /**
  * Miniplayer de tablet (Apple Music en Xiaomi Pad): cápsula ancha de 63 dp con
  * aleatorio · anterior · play · siguiente · repetir, la canción y, al final,
- * letra y cola (que abren la hoja en ese modo).
+ * letra y cola (que abren la hoja en ese modo); tocar la canción la abre como se dejó (`null`).
  */
 @Composable
 fun WideMiniPlayer(
     remote: CiderRemote,
     state: PlayerState,
     haze: GlassBackdrop,
-    onOpen: (SheetMode) -> Unit,
+    onOpen: (SheetMode?) -> Unit,
     modifier: Modifier = Modifier,
     /** Color de texto e iconos según lo que hay detrás (blanco o negro); leído al dibujar. */
     label: (() -> Color)? = null,
@@ -237,7 +237,7 @@ fun WideMiniPlayer(
         ) { remote.cycleRepeat() }
         Row(
             Modifier.weight(1f).padding(horizontal = 10.dp).clip(RoundedCornerShape(8.dp))
-                .combinedClickableCompat(onClick = { onOpen(SheetMode.Artwork) })
+                .combinedClickableCompat(onClick = { onOpen(null) })
                 .semantics { contentDescription = openDescription },
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -185,7 +185,9 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         } else pages.settle()
         tab = selected
     }
-    val openSheet: (SheetMode) -> Unit = { sheetMode = it; sheet.open(tap = true) }
+    // `null`: como se dejó (tablet: tocar la canción del miniplayer vuelve a abrir la hoja con la letra o la
+    // cola si estaban a la vista al cerrarla).
+    val openSheet: (SheetMode?) -> Unit = { if (it != null) sheetMode = it; sheet.open(tap = true) }
 
     BackHandler(enabled = sidebar) { sidebar = false }
     var rootSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
@@ -194,6 +196,9 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     // fotograma del gesto; leídos directamente recomponían toda esta pantalla a cada fotograma.
     val sheetOpen by remember(sheet) { derivedStateOf { sheet.isOpen } }
     val sheetVisible by remember(sheet) { derivedStateOf { sheet.visible } }
+    // Teléfono: cerrada vuelve a la carátula (deslizar el miniplayer la abre siempre así); la tablet recuerda
+    // si se cerró con la letra o la cola a la vista.
+    LaunchedEffect(sheetVisible, wide) { if (!sheetVisible && !wide) sheetMode = SheetMode.Artwork }
     PredictiveBackHandler(enabled = !sheetOpen && !sidebar && stack.size > 1) { events ->
         pages.predictiveBack(events, rootSize.width.toFloat())
     }
@@ -585,7 +590,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         // Deslizar el miniplayer hacia arriba la abre siguiendo al dedo (Apple Music).
         // Desde la hoja, "ir al álbum/artista" la cierra y abre la página en la pestaña actual.
         if (sheetVisible && hasTrack) CompositionLocalProvider(LocalOpenRoute provides { r -> sheet.close(); pages.push(r) }, LocalGlassBackdrop provides haze) {
-            NowPlayingSheet(remote, state, sheet, initialMode = sheetMode)
+            NowPlayingSheet(remote, state, sheet, mode = sheetMode, onMode = { sheetMode = it })
         }
     }
     }

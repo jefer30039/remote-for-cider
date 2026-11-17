@@ -173,9 +173,9 @@ private fun Color.lighter(f: Float) = Color((red * f).coerceAtMost(1f), (green *
  */
 fun sheetBackground(accent: Color?): Color = (accent ?: Color(0xFF2C2C2E)).asBackground(targetLuminance = 0.045f, saturationBoost = 1.15f)
 
+/** [mode] lo guarda quien la abre: en tablet la hoja vuelve a abrirse como se dejó (con la letra o la cola a la vista). */
 @Composable
-fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, initialMode: SheetMode = SheetMode.Artwork) {
-    var mode by remember { mutableStateOf(initialMode) }
+fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, mode: SheetMode, onMode: (SheetMode) -> Unit) {
     val wide = LocalWindowLayout.current.expanded
     // Color de fondo: el dominante de la paleta calibrada con la app oficial (brillo × 0,7); hasta que
     // se calcula, el de `bgColor` oscurecido.
@@ -185,7 +185,9 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
     // Derivados: la posición de la hoja cambia en cada fotograma del gesto y leerla aquí recomponía la hoja entera.
     val open by remember(sheet) { derivedStateOf { sheet.isOpen } }
     val moved by remember(sheet) { derivedStateOf { sheet.position.value > 0f } }
-    BackHandler(enabled = open) { if (mode != SheetMode.Artwork) mode = SheetMode.Artwork else sheet.close() }
+    // Teléfono: atrás vuelve de la letra o la cola a la carátula. Tablet: van al lado, así que atrás cierra
+    // la hoja y la letra sigue ahí al volver a abrirla.
+    BackHandler(enabled = open) { if (!wide && mode != SheetMode.Artwork) onMode(SheetMode.Artwork) else sheet.close() }
     LightStatusBarIcons()
     // Con la letra a la vista la pantalla no se apaga (como Apple Music).
     val view = LocalView.current
@@ -223,8 +225,8 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
             ColorField(palette, background, dim = if (mode != SheetMode.Artwork) (if (wide) 0.25f else 0.38f) else 0f)
         }
         // Tablet: la portada animada cuadrada dentro de la tarjeta (iPad); el fondo sigue siendo el campo de color.
-        if (wide) TabletSheet(remote, state, mode, { mode = it }, dismissDrag, cover?.square, sheet, root)
-        else PhoneSheet(remote, state, mode, { mode = it }, background, dismissDrag, video, sheet, root)
+        if (wide) TabletSheet(remote, state, mode, onMode, dismissDrag, cover?.square, sheet, root)
+        else PhoneSheet(remote, state, mode, onMode, background, dismissDrag, video, sheet, root)
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
             Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp).sheetFade(sheet)
