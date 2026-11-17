@@ -219,8 +219,8 @@ class CiderApi(
 
     private suspend fun editorialVideo(path: String): AnimatedCover? {
         val root = CiderJson.parseToJsonElement(request(HttpMethod.Get, "/amapi/raw/$path").bodyAsText()).jsonObject
-        val attributes = root["data"]?.jsonObject?.get("data")?.jsonArray?.firstOrNull()?.jsonObject
-            ?.get("attributes")?.jsonObject ?: return null
+        val item = root["data"]?.jsonObject?.get("data")?.jsonArray?.firstOrNull()?.jsonObject
+        val attributes = item?.get("attributes")?.jsonObject ?: return null
         val video = attributes["editorialVideo"]?.jsonObject
         // La primera variante que traiga vídeo; su `previewFrame` es un fotograma fijo de ese mismo vídeo.
         fun pick(vararg keys: String) = keys.firstNotNullOfOrNull { key ->
@@ -234,8 +234,10 @@ class CiderApi(
             bgColor = attributes["artwork"]?.jsonObject?.get("bgColor")?.jsonPrimitive?.content,
             tallPreview = (tall?.get("previewFrame") as? kotlinx.serialization.json.JsonObject)
                 ?.get("url")?.jsonPrimitive?.content?.let { Artwork(url = it) },
+            catalogId = item["id"]?.jsonPrimitive?.content,
+            trackCount = attributes["trackCount"]?.jsonPrimitive?.content?.toIntOrNull(),
         )
-        return cover.takeIf { it.square != null || it.tall != null || it.bgColor != null }
+        return cover.takeIf { it.square != null || it.tall != null || it.bgColor != null || it.catalogId != null }
     }
 
     /** Categorías de la portada de búsqueda (las de Apple Music: Radio, Dance, Éxitos…). */

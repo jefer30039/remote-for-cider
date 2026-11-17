@@ -136,13 +136,20 @@ fun SongMenu(remote: CiderRemote, expanded: Boolean, onDismiss: () -> Unit, type
  * Sin fondo disponible, color plano.
  */
 @Composable
-fun GlassMenu(expanded: Boolean, onDismiss: () -> Unit, width: Dp = 292.dp, content: @Composable ColumnScope.() -> Unit) {
+fun GlassMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    width: Dp = 292.dp,
+    /** Como en `DropdownMenu`: desde la esquina inferior izquierda del ancla. */
+    offset: androidx.compose.ui.unit.DpOffset = androidx.compose.ui.unit.DpOffset(0.dp, 0.dp),
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val glass = LocalGlassBackdrop.current
     val backdrop = glass?.let { rememberSharedBackdrop(it) }
     // Mismo velo que la barra de Kyant.
     val surface = if (Apple.colors.isDark) Color(0xFF121212).copy(alpha = 0.4f) else Color(0xFFFAFAFA).copy(alpha = 0.4f)
     DropdownMenu(
-        expanded, onDismissRequest = onDismiss,
+        expanded, onDismissRequest = onDismiss, offset = offset,
         shape = RoundedCornerShape(22.dp), shadowElevation = 12.dp,
         containerColor = if (backdrop != null) Color.Transparent else Apple.colors.bar,
         modifier = Modifier.width(width).then(

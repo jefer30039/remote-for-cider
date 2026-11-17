@@ -152,4 +152,6 @@
     <string name="playlist_add_failed">Couldn\u2019t add to the playlist</string>
     <string name="playlists_none_editable">No editable playlists</string>
     <string name="action_show_artwork">Show artwork</string>
+    <string name="action_show_complete_album">Show Complete Album</string>
+    <string name="status_tap_to_search">Tap to find your computer</string>
 </resources>

@@ -100,6 +100,9 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import cider.remote.app.ui.components.glassSource
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -214,10 +217,16 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
     }
 
     val root = remember { SheetRoot() }
+    // Fondo de vidrio propio: los menús de la hoja ("…" y el del equipo) se ven sobre la hoja, no sobre la
+    // página de debajo. Dentro de la hoja ninguna pieza lee este fondo (se dibujaría dentro de sí misma);
+    // solo los menús emergentes, que viven en otra ventana.
+    val sheetGlass = cider.remote.app.ui.components.rememberGlassBackdrop()
+    androidx.compose.runtime.CompositionLocalProvider(cider.remote.app.ui.components.LocalGlassBackdrop provides sheetGlass) {
     Box(
         Modifier.fillMaxSize()
             .graphicsLayer { translationY = sheet.offsetPx }
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
+            .glassSource(sheetGlass)
             // La hoja aparece fundiéndose (ver SheetState); la carátula no.
             .drawBehind { drawRect(background, alpha = sheet.contentAlpha) },
     ) {
@@ -244,6 +253,7 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
             Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp).sheetFade(sheet)
                 .size(width = 36.dp, height = 5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.45f)),
         )
+    }
     }
 }
 
@@ -821,22 +831,24 @@ private fun MoreMenu(remote: CiderRemote, state: PlayerState) {
     var menu by remember { mutableStateOf(false) }
     Box {
         GlassCircle(Icons.Filled.MoreHoriz, stringResource(R.string.action_more)) { menu = true }
-        DropdownMenu(menu, onDismissRequest = { menu = false }) {
-            val loved = state.inFavorites == true
-            DropdownMenuItem(
-                text = { Text(stringResource(if (loved) R.string.action_unfavorite else R.string.action_favorite)) },
-                leadingIcon = { Icon(if (loved) Icons.Filled.Star else Icons.Filled.StarBorder, null) },
-                onClick = { menu = false; remote.toggleLove() },
-            )
-            when (state.inLibrary) {
-                true -> DropdownMenuItem(text = { Text(stringResource(R.string.action_remove_from_library)) }, onClick = { menu = false; remote.toggleInLibrary() })
-                false -> DropdownMenuItem(text = { Text(stringResource(R.string.action_add_to_library)) }, onClick = { menu = false; remote.toggleInLibrary() })
-                null -> Unit
+        // De vidrio como los demás menús, con la paleta oscura: la hoja siempre es oscura.
+        cider.remote.app.ui.ForceDark {
+            cider.remote.app.ui.components.GlassMenu(menu, onDismiss = { menu = false }, width = 260.dp) {
+                val loved = state.inFavorites == true
+                cider.remote.app.ui.components.MenuRow(
+                    if (loved) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    stringResource(if (loved) R.string.action_unfavorite else R.string.action_favorite),
+                ) { menu = false; remote.toggleLove() }
+                when (state.inLibrary) {
+                    true -> cider.remote.app.ui.components.MenuRow(Icons.Filled.Delete, stringResource(R.string.action_remove_from_library)) { menu = false; remote.toggleInLibrary() }
+                    false -> cider.remote.app.ui.components.MenuRow(Icons.Filled.Add, stringResource(R.string.action_add_to_library)) { menu = false; remote.toggleInLibrary() }
+                    null -> Unit
+                }
+                cider.remote.app.ui.components.MenuRow(
+                    Icons.Rounded.Shuffle,
+                    stringResource(if (state.shuffle) R.string.action_shuffle_off else R.string.action_shuffle_on),
+                ) { menu = false; remote.toggleShuffle() }
             }
-            DropdownMenuItem(
-                text = { Text(stringResource(if (state.shuffle) R.string.action_shuffle_off else R.string.action_shuffle_on)) },
-                onClick = { menu = false; remote.toggleShuffle() },
-            )
         }
     }
 }
@@ -977,13 +989,17 @@ private fun OutputButton(remote: CiderRemote) {
     val deviceName = stringResource(if (platform == "darwin") R.string.device_mac else R.string.device_computer)
     Box {
         ModeButton(Icons.Rounded.Laptop, stringResource(R.string.device_description, deviceName), selected = false) { open = true }
-        DropdownMenu(open, onDismissRequest = { open = false }) {
-            Column(Modifier.width(300.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Laptop, null, tint = Apple.colors.accent, modifier = Modifier.size(22.dp))
-                    Text(deviceName, style = Apple.type.headline, color = Apple.colors.label, modifier = Modifier.padding(start = 10.dp))
+        cider.remote.app.ui.ForceDark {
+            // Centrado sobre el botón (44 dp): si no, arranca en su borde izquierdo y Android lo empuja contra el
+            // borde derecho de la pantalla.
+            cider.remote.app.ui.components.GlassMenu(open, onDismiss = { open = false }, width = 260.dp, offset = androidx.compose.ui.unit.DpOffset((-108).dp, 0.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Laptop, null, tint = Apple.colors.accent, modifier = Modifier.size(22.dp))
+                        Text(deviceName, style = Apple.type.headline, color = Apple.colors.label, modifier = Modifier.padding(start = 10.dp))
+                    }
+                    SpeakerBassRow(remote, open)
                 }
-                SpeakerBassRow(remote, open)
             }
         }
     }

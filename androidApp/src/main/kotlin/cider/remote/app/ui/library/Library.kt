@@ -2,6 +2,9 @@ package cider.remote.app.ui.library
 
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.res.pluralStringResource
 import cider.remote.app.R
 import androidx.compose.ui.res.stringResource
@@ -33,7 +36,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MusicNote
@@ -616,7 +618,7 @@ private fun WideCollectionHeader(
                         background = Color.White.copy(alpha = 0.1f), tint = Color.White, border = null, iconSize = 24.dp)
                     PillButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, onPlay, Modifier.width(160.dp),
                         background = Color.White, content = Color.Black)
-                    CircleButton(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(R.string.action_play_last), onAddLater, size = 48.dp,
+                    CircleButton(AppleIcons.PlayLast, stringResource(R.string.action_play_last), onAddLater, size = 48.dp,
                         background = Color.White.copy(alpha = 0.1f), tint = Color.White, border = null, iconSize = 24.dp)
                 }
             }
@@ -693,7 +695,10 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
         // Fondo en su propia capa: el fundido de color solo vuelve a pintar esta capa; dibujado
         // detrás de la lista obligaba a volver a grabar la página entera en cada fotograma.
         Box(Modifier.matchParentSize().graphicsLayer().drawBehind { drawRect(bgShown.value) })
-        LazyVerticalGrid(columns = GridCells.Fixed(1), contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
+        val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+        // Desplazamiento de la cabecera (px); fuera de la pantalla, "muy lejos". Se lee al dibujar.
+        val headerScroll: () -> Float = { if (grid.firstVisibleItemIndex == 0) grid.firstVisibleItemScrollOffset.toFloat() else 1e6f }
+        LazyVerticalGrid(columns = GridCells.Fixed(1), state = grid, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             fullWidth {
                 if (wideScreen) WideCollectionHeader(
                     route, cover?.square, tracks?.getOrNull()?.size, onArtist = toArtist, secondary = secondary,
@@ -703,7 +708,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     if (tall != null) {
                         // Portada animada vertical (3:4) a todo el ancho; el título se apoya en el degradado.
-                        Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).dissolveOnScroll(headerScroll, threshold = 170.dp, fadeLength = 450.dp)) {
                             AnimatedCover(tall, Modifier.fillMaxSize()) {
                                 AsyncImage(
                                     model = route.artwork?.sized(1200), contentDescription = null,
@@ -717,7 +722,8 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                         Spacer(Modifier.height(125.dp))
                         ArtworkImage(
                             route.artwork, 257.dp, px = 800, shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.shadow(18.dp, RoundedCornerShape(8.dp)),
+                            modifier = Modifier.dissolveOnScroll(headerScroll, threshold = 105.dp, fadeLength = 200.dp)
+                                .shadow(18.dp, RoundedCornerShape(8.dp)),
                         )
                         Spacer(Modifier.height(20.dp))
                     }
@@ -746,7 +752,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                                 background = Color.White.copy(alpha = 0.1f), tint = Color.White, border = null, iconSize = 24.dp)
                             PillButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, { play(false) }, Modifier.width(160.dp),
                                 background = Color.White, content = Color.Black)
-                            CircleButton(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(R.string.action_play_last),
+                            CircleButton(AppleIcons.PlayLast, stringResource(R.string.action_play_last),
                                 { scope.launch { runCatching { remote.api.queueAddLater(route.kind, route.id) } } }, size = 48.dp,
                                 background = Color.White.copy(alpha = 0.1f), tint = Color.White, border = null, iconSize = 24.dp)
                         }
@@ -812,7 +818,79 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                     modifier = Modifier.offset(y = listOverlap).padding(start = Margin, top = 24.dp),
                 )
             }
+            // Álbum de la biblioteca con solo parte de sus canciones: "Ver álbum completo" abre el del catálogo
+            // (Apple Music, debajo del pie).
+            val catalogAlbum = cover?.catalogId?.takeIf {
+                route.kind == "library-albums" && !list.isNullOrEmpty() && (cover?.trackCount ?: Int.MAX_VALUE) > list.size
+            }
+            if (catalogAlbum != null) fullWidth {
+                Column(Modifier.offset(y = listOverlap).padding(top = 20.dp)) {
+                    Box(Modifier.padding(horizontal = Margin).fillMaxWidth().height(0.5.dp).background(Color.White.copy(alpha = 0.14f)))
+                    Text(
+                        stringResource(R.string.action_show_complete_album), style = Apple.type.body, color = Color.White,
+                        modifier = Modifier.fillMaxWidth()
+                            .combinedClickableCompat(onClick = {
+                                openRoute(Route.Collection("albums", catalogAlbum, route.title, route.subtitle, route.artwork))
+                            })
+                            .padding(horizontal = Margin, vertical = 14.dp),
+                    )
+                    Box(Modifier.padding(horizontal = Margin).fillMaxWidth().height(0.5.dp).background(Color.White.copy(alpha = 0.14f)))
+                }
+            }
         }
         // El ⋮ de arriba a la derecha lo pone MainScreen (fuera de la página, como el de volver).
     }
+}
+
+/**
+ * Carátula de la cabecera al desplazar (Apple Music, medido en dos grabaciones del usuario): sube al
+ * 68 % de la velocidad de la página hasta [threshold] de desplazamiento y ahí se queda fija; a partir de
+ * ahí se desenfoca poco a poco con el desplazamiento (radio de 0 a 36 dp en 70 dp de recorrido, curva
+ * suave) y a la vez se funde con el fondo a lo largo de [fadeLength] mientras el texto pasa por encima.
+ * El desenfoque se dibuja con margen alrededor para que se derrame fuera del borde de la carátula: dentro
+ * de sus límites dejaba un rectángulo marcado sobre el fondo. Antes (descartado por brusco): pasar de una
+ * copia nítida a otra borrosa en 160 ms al cruzar el umbral. El radio se redondea a pasos de 2 px para no
+ * rehacer el efecto en cada píxel. Todo se lee al dibujar: desplazar no recompone la página.
+ */
+private class BlurCache {
+    var radius = -1f
+    var effect: androidx.compose.ui.graphics.RenderEffect? = null
+    fun get(r: Float): androidx.compose.ui.graphics.RenderEffect {
+        if (r != radius) { radius = r; effect = androidx.compose.ui.graphics.BlurEffect(r, r, androidx.compose.ui.graphics.TileMode.Decal) }
+        return effect!!
+    }
+}
+
+private fun smooth(t: Float): Float = t.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
+
+@Composable
+private fun Modifier.dissolveOnScroll(scroll: () -> Float, threshold: androidx.compose.ui.unit.Dp, fadeLength: androidx.compose.ui.unit.Dp): Modifier {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val thresholdPx = with(density) { threshold.toPx() }
+    val fadePx = with(density) { fadeLength.toPx() }
+    val rangePx = with(density) { 70.dp.toPx() }
+    val maxBlurPx = with(density) { 36.dp.toPx() }
+    val padPx = with(density) { 72.dp.toPx() }
+    val layer = androidx.compose.ui.graphics.rememberGraphicsLayer()
+    val cache = remember { BlurCache() }
+    return this
+        .graphicsLayer {
+            val s = scroll().coerceAtLeast(0f)
+            translationY = s - minOf(s, thresholdPx) * 0.68f
+            alpha = 1f - smooth((s - thresholdPx) / fadePx)
+            // Sin búfer intermedio: con alfa < 1 la capa se pintaba en uno del tamaño de la carátula y el
+            // desenfoque que se derrama fuera quedaba cortado en recto.
+            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+        }
+        .drawWithContent {
+            val k = smooth((scroll() - thresholdPx) / rangePx)
+            val radius = kotlin.math.round(k * maxBlurPx / 2f) * 2f
+            if (radius < 1f) { drawContent(); return@drawWithContent }
+            val full = androidx.compose.ui.unit.IntSize(
+                kotlin.math.ceil(size.width + 2 * padPx).toInt(), kotlin.math.ceil(size.height + 2 * padPx).toInt(),
+            )
+            layer.renderEffect = cache.get(radius)
+            layer.record(full) { translate(padPx, padPx) { this@drawWithContent.drawContent() } }
+            translate(-padPx, -padPx) { drawLayer(layer) }
+        }
 }

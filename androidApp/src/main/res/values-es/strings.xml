@@ -154,4 +154,6 @@
     <string name="playlist_add_failed">No se pudo añadir a la playlist</string>
     <string name="playlists_none_editable">No hay playlists editables</string>
     <string name="action_show_artwork">Ver carátula</string>
+    <string name="action_show_complete_album">Ver álbum completo</string>
+    <string name="status_tap_to_search">Toca para buscar el PC</string>
 </resources>

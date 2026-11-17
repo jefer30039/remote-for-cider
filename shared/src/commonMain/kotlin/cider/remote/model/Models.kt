@@ -278,4 +278,12 @@ data class SearchCategory(
  * [tallPreview]: fotograma fijo del vídeo vertical (`previewFrame`, 3:4): coincide con su primer
  * fotograma, así que sirve de imagen de espera sin salto al empezar el vídeo.
  */
-data class AnimatedCover(val square: String?, val tall: String?, val bgColor: String? = null, val tallPreview: Artwork? = null)
+data class AnimatedCover(
+    val square: String?,
+    val tall: String?,
+    val bgColor: String? = null,
+    val tallPreview: Artwork? = null,
+    /** Id y número de canciones del álbum en el catálogo (para "Ver álbum completo" desde la biblioteca). */
+    val catalogId: String? = null,
+    val trackCount: Int? = null,
+)

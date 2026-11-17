@@ -204,12 +204,14 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     }
 
     val hasTrack = state.track != null
+    // El miniplayer está siempre: sin canción o sin conexión lo dice él mismo (y sin canción no abre la hoja).
+    val showMini = true
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // Apple Music deja la barra a 16 dp del borde, encima del asa de gestos.
     val barBottom: Dp = if (nav > 32.dp) nav + 8.dp else max(nav, 16.dp)
-    val bottom = if (wide) barBottom + (if (hasTrack) WideMiniHeight else 0.dp) + 24.dp
-    else barBottom + TabBarHeight + (if (hasTrack) MiniHeight + BarGap else 0.dp) + 24.dp
+    val bottom = if (wide) barBottom + (if (showMini) WideMiniHeight else 0.dp) + 24.dp
+    else barBottom + TabBarHeight + (if (showMini) MiniHeight + BarGap else 0.dp) + 24.dp
     // En tablet la barra de pestañas va arriba (cápsula de 46 dp) y no hay título grande.
     val wideTop = top + 10.dp + WideBarHeight + 18.dp
 
@@ -253,7 +255,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     // la miniatura del miniplayer. Con más recorrido va con alfa 0 y el sistema no lo dibuja (sus
     // desenfoques costaban hilo de render); todo se lee al dibujar o al colocar, sin recomponer.
     val bottomGroupPx = with(density) {
-        (barBottom + (if (wide) WideMiniHeight else TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp) + 48.dp).toPx()
+        (barBottom + (if (wide) WideMiniHeight else TabBarHeight + if (showMini) MiniHeight + BarGap else 0.dp) + 48.dp).toPx()
     }
     val thumbInsetPx = with(density) { ((if (wide) WideMiniHeight - WideThumbSize else MiniHeight - 32.dp) / 2).toPx() }
     androidx.compose.runtime.SideEffect { sheet.barsTravel = bottomGroupPx }
@@ -331,7 +333,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                 val bandTop = floor - when {
                     wide -> WideMiniHeight.toPx()
                     compact -> CompactBarHeight.toPx()
-                    else -> (TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp).toPx()
+                    else -> (TabBarHeight + if (showMini) MiniHeight + BarGap else 0.dp).toPx()
                 }
                 val pieces = if (wide) {
                     val miniW = minOf(WideMiniMaxWidth.toPx(), w - 2 * SideMargin.toPx())
@@ -526,14 +528,15 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             if (anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)() }) {
                 ConnectionMenuButton(connection.endpoint.host, onForget, backdrop = haze)
             }
-            if (hasTrack) WideMiniPlayer(
+            if (showMini) WideMiniPlayer(
                 remote, state, haze, onOpen = openSheet,
                 label = { miniLabel.value }, container = { miniVeil.value }, thumb = thumbModifier,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = barBottom)
                     .widthIn(max = WideMiniMaxWidth).fillMaxWidth().padding(horizontal = SideMargin)
                     // Se coloca (no una capa trasladada): así el vidrio sigue leyendo lo que tiene detrás.
                     .offset { IntOffset(0, sheet.barsShift.roundToInt()) }
-                    .graphicsLayer { alpha = if (sheet.progress >= 0.3f) 0f else 1f }.sheetDrag(sheet),
+                    .graphicsLayer { alpha = if (sheet.progress >= 0.3f) 0f else 1f }
+                    .then(if (hasTrack) Modifier.sheetDrag(sheet) else Modifier),
             )
             AnimatedVisibility(sidebar, enter = slideInHorizontally { -it }, exit = slideOutHorizontally { -it }) {
                 Sidebar(tab, haze, connection.endpoint.host, onSelect = { select(it); sidebar = false }, onClose = { sidebar = false }, onForget = onForget)
@@ -548,12 +551,12 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             Box(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                     .padding(start = SideMargin, end = SideMargin, bottom = barBottom)
-                    .height(TabBarHeight + if (hasTrack) MiniHeight + BarGap else 0.dp)
+                    .height(TabBarHeight + if (showMini) MiniHeight + BarGap else 0.dp)
                     // Se colocan (no una capa trasladada): así el vidrio sigue leyendo lo que tiene detrás.
                     .offset { IntOffset(0, sheet.barsShift.roundToInt()) }
                     .graphicsLayer { alpha = if (sheet.progress >= 0.3f) 0f else 1f },
             ) {
-                if (hasTrack) MiniPlayer(
+                if (showMini) MiniPlayer(
                     remote, state, onOpen = { openSheet(SheetMode.Artwork) }, haze = haze,
                     compact = { minimize.value }, label = { miniLabel.value }, container = { miniVeil.value },
                     thumb = thumbModifier,
@@ -564,7 +567,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                         val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
                         val down = ((TabBarHeight + BarGap).toPx() * p).roundToInt()
                         layout(constraints.maxWidth, placeable.height) { placeable.place(shift, down) }
-                    }.sheetDrag(sheet),
+                    }.then(if (hasTrack) Modifier.sheetDrag(sheet) else Modifier),
                 )
                 Box(
                     Modifier.align(Alignment.BottomStart).layout { measurable, constraints ->
