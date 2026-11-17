@@ -50,6 +50,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Al entrar en la app se comprueba que el PC siga donde estaba; si no, se busca en la red.
+    override fun onStart() {
+        super.onStart()
+        app.session.onAppForeground()
+    }
+
+    override fun onStop() {
+        app.session.onAppBackground()
+        super.onStop()
+    }
+
     @Composable
     private fun Root() {
         val session = app.session

@@ -55,6 +55,9 @@ class PcFinder(private val context: Context, private val http: HttpClient) {
         return found.takeIf { it.isCompleted }?.getCompleted()?.ifEmpty { null }
     }
 
+    /** Si Cider responde en [ip] (con [token], o pidiéndolo si no hay). */
+    suspend fun answers(ip: String, port: Int, token: String?): Boolean = isCider(ip, port, token)
+
     private suspend fun isCider(ip: String, port: Int, token: String?): Boolean = runCatching {
         val response = http.get("http://$ip:$port/api/v2/client/info") {
             if (token != null) header("apptoken", token)

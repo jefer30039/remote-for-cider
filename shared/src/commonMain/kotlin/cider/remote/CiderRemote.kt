@@ -2,6 +2,7 @@ package cider.remote
 
 import cider.remote.model.PlaybackSnapshot
 import cider.remote.model.PlaybackTimeEvent
+import cider.remote.model.QueueTrack
 import cider.remote.model.RepeatMode
 import cider.remote.model.Track
 import kotlinx.coroutines.CoroutineScope
@@ -137,17 +138,28 @@ class CiderRemote(
             // que los elementos de la cola conservan el id con el que se pidieron.
             val expected = HashSet<String>().apply { add(id) }
             suspend fun slice(limit: Int) = runCatching { api.queue(offset = api.queuePosition().position, limit = limit).first.items }.getOrNull()
-            if (!waitFor(3000) { slice(1)?.firstOrNull()?.track?.id == id }) { println("playThenQueue: no empezó $id"); return@launch }
+            if (!waitFor(3000) { slice(1)?.firstOrNull()?.track?.isRequest(id) == true }) { println("playThenQueue: no empezó $id"); return@launch }
             for ((index, pair) in following.withIndex()) {
                 val (t, i) = pair
-                val current = slice(1)?.firstOrNull()?.track?.id
-                if (current != null && current !in expected) return@launch  // el usuario puso otra cosa
+                val current = slice(1)?.firstOrNull()?.track
+                if (current != null && expected.none { current.isRequest(it) }) return@launch  // el usuario puso otra cosa
                 runCatching { api.queueAddLater(t, i) }.getOrElse { println("playThenQueue: add-later falló $it"); return@launch }
                 expected.add(i)
                 // Esperar a verla en la cola (el total crece también con las sugerencias automáticas).
-                if (!waitFor(3000) { slice(index + 3)?.any { it.track.id == i } ?: false }) println("playThenQueue: $i no apareció en la cola")
+                if (!waitFor(3000) { slice(index + 3)?.any { it.track.isRequest(i) } ?: false }) println("playThenQueue: $i no apareció en la cola")
             }
         }
+    }
+
+    /**
+     * Si este elemento de la cola es la canción pedida con [id]. Las canciones de álbumes de la
+     * biblioteca (`i.…`) conservan su id en la cola, pero las de playlists de la biblioteca llegan
+     * como `a.<id de catálogo>` y Cider las pone en la cola con el id de catálogo: comparando solo el
+     * id, la primera nunca "empezaba" y no se encolaba nada (Cider rellenaba con sus sugerencias).
+     */
+    private fun QueueTrack.isRequest(id: String): Boolean {
+        val catalog = id.removePrefix("a.")
+        return this.id == id || this.id == catalog || attributes?.playParams?.catalogId == catalog
     }
 
     private suspend fun waitFor(timeoutMs: Long, condition: suspend () -> Boolean): Boolean {

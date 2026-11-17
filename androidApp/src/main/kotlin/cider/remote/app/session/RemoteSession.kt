@@ -47,6 +47,9 @@ class RemoteSession(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /** La app está a la vista (MainActivity entre onStart y onStop): con ella, se busca más a menudo. */
+    @Volatile private var foreground = false
+
     private val _searching = MutableStateFlow(false)
     /** True mientras se busca el PC en la red (la IP pudo cambiar). */
     val searching: StateFlow<Boolean> = _searching.asStateFlow()
@@ -68,14 +71,16 @@ class RemoteSession(
                     remote.signals.filterIsInstance<RemoteSignal.Unauthorized>().collect { store.clear() }
                 }
                 remoteScope.launch {
-                    // Sin conexión un rato: puede que el PC haya cambiado de IP. Buscarlo en la
-                    // red con el mismo token y, si aparece en otra dirección, reconectar ahí.
+                    // Al perder la conexión: puede que el PC haya cambiado de IP. Buscarlo enseguida en
+                    // la red con el mismo token (1 s de margen para cortes momentáneos) y, si aparece
+                    // en otra dirección, reconectar ahí; si no, reintentar cada 10 s con la app a la
+                    // vista y cada minuto en segundo plano.
                     remote.state.map { it.link is Link.Offline }.distinctUntilChanged().collectLatest { offline ->
                         if (!offline) return@collectLatest
-                        delay(4_000)
+                        delay(1_000)
                         while (true) {
                             if (relocate(connection)) return@collectLatest
-                            delay(30_000)
+                            delay(if (foreground) 10_000 else 60_000)
                         }
                     }
                 }
@@ -105,6 +110,25 @@ class RemoteSession(
         } finally {
             _searching.value = false
         }
+    }
+
+    /**
+     * Al entrar en la app: si el PC no responde en la dirección guardada (p. ej. el teléfono o el
+     * PC cambiaron de red mientras la app estaba cerrada), buscarlo sin esperar a que el socket
+     * se dé por perdido.
+     */
+    fun onAppForeground() {
+        foreground = true
+        val paired = state.value as? SessionState.Paired ?: return
+        val endpoint = paired.connection.endpoint
+        scope.launch {
+            if (finder.answers(endpoint.host, endpoint.port, paired.connection.token)) return@launch
+            relocate(paired.connection)
+        }
+    }
+
+    fun onAppBackground() {
+        foreground = false
     }
 
     /** Buscar el PC ahora (menú ⋮). */
