@@ -19,8 +19,8 @@ android {
         applicationId = "io.github.jefer30039.remoteforcider"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.3.2"
+        versionCode = 9
+        versionName = "1.4.0"
     }
 
     buildFeatures {

@@ -169,6 +169,24 @@ private fun AboutDialog(updates: UpdateChecker, status: UpdateStatus, onDismiss:
  * (UpdateInstaller). Si Android no deja instalar desde la app, lleva al ajuste; siempre queda el
  * enlace a la página de la release.
  */
+/** Primeras viñetas de las notas de la release en el idioma pedido (inglés antes de "## Novedades", español después). */
+internal fun releaseNotes(body: String, spanish: Boolean, max: Int = 6): String {
+    val lines = body.lines()
+    val es = lines.indexOfFirst { it.trim().startsWith("## Novedades") }
+    val part = when {
+        es < 0 -> lines
+        spanish -> lines.drop(es)
+        else -> lines.take(es)
+    }
+    // De cada viñeta, su titular en negrita ("**Temporizador para dormir.** …") o, si no tiene, la primera frase.
+    return part.filter { it.startsWith("- ") }.take(max).joinToString("\n") { line ->
+        val text = line.removePrefix("- ").replace(Regex("""\[([^\]]+)]\([^)]*\)"""), "$1")
+        val lead = Regex("""^\*\*(.+?)\*\*""").find(text)?.groupValues?.get(1)
+            ?: text.replace("**", "").let { t -> t.indexOf(". ").takeIf { it > 0 }?.let { t.substring(0, it + 1) } ?: t }
+        "• $lead"
+    }
+}
+
 @Composable
 private fun UpdateDialog(update: cider.remote.app.data.Update, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -181,8 +199,10 @@ private fun UpdateDialog(update: cider.remote.app.data.Update, onDismiss: () -> 
         title = { Text(stringResource(R.string.update_title, update.version)) },
         text = {
             Column {
-                // Las notas de la release vienen en inglés y español; se enseña el principio.
-                val notes = update.notes.lines().filter { it.startsWith("- ") }.take(6).joinToString("\n") { "• " + it.removePrefix("- ").replace("**", "") }
+                // Las notas de la release traen primero el inglés y desde "## Novedades" el español: se enseñan las
+                // primeras viñetas del idioma de la app.
+                val spanish = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "es"
+                val notes = releaseNotes(update.notes, spanish)
                 if (notes.isNotBlank()) Text(notes, style = Apple.type.footnote, color = Apple.colors.secondaryLabel)
                 Spacer(Modifier.height(12.dp))
                 when (val s = state) {
