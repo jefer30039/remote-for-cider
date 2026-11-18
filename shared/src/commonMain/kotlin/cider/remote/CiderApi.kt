@@ -275,6 +275,23 @@ class CiderApi(
     suspend fun catalogTracks(type: String, id: String): List<AmItem> =
         amapiRaw("v1/catalog/\$STOREFRONT/$type/$id/tracks?limit=100")
 
+    /**
+     * Ids de las canciones de un álbum o playlist de la biblioteca (`albums` / `playlists`) que
+     * no se pueden reproducir (sin `playParams`, p. ej. aún no publicadas). Las rutas
+     * `/library/…/songs` de Cider no traen ese dato; Apple sí, con los mismos ids.
+     */
+    suspend fun libraryUnplayable(type: String, id: String, max: Int = 1000): Set<String> {
+        val out = mutableSetOf<String>()
+        var offset = 0
+        while (offset < max) {
+            val page = amapiRaw("v1/me/library/$type/$id/tracks?limit=100&offset=$offset")
+            page.filter { it.attributes?.playParams == null }.mapTo(out) { it.id }
+            if (page.size < 100) break
+            offset += page.size
+        }
+        return out
+    }
+
     suspend fun search(term: String, limit: Int = 10): SearchResults {
         val env: Envelope<SearchEnvelope> = request(HttpMethod.Get, "/amapi/search") {
             parameter("term", term)

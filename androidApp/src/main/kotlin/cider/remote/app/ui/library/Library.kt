@@ -114,6 +114,7 @@ import cider.remote.model.AmItem
 import cider.remote.model.AnimatedCover
 import cider.remote.model.Artwork
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -568,10 +569,17 @@ private data class TrackRow(
 )
 
 private suspend fun CiderApi.tracks(c: Route.Collection): List<TrackRow> = when (c.kind) {
-    "library-albums" -> allPages { albumSongs(c.id, it, MAX_PAGE) }
-        .map { TrackRow("library-songs", it.id, it.trackNumber, it.name, it.artistName, it.durationMs, it.artwork) }
-    "library-playlists" -> allPages { playlistSongs(c.id, it, MAX_PAGE) }
-        .map { TrackRow("library-songs", it.id, null, it.name, it.artistName, it.durationMs, it.artwork) }
+    "library-albums", "library-playlists" -> kotlinx.coroutines.coroutineScope {
+        val album = c.kind == "library-albums"
+        // Cider no dice cuáles no se pueden reproducir: se pregunta a Apple a la vez. Si falla, todas disponibles.
+        val unplayable = async { runCatching { libraryUnplayable(if (album) "albums" else "playlists", c.id) }.getOrDefault(emptySet()) }
+        val songs = allPages { if (album) albumSongs(c.id, it, MAX_PAGE) else playlistSongs(c.id, it, MAX_PAGE) }
+        val off = unplayable.await()
+        songs.map {
+            TrackRow("library-songs", it.id, if (album) it.trackNumber else null, it.name, it.artistName, it.durationMs, it.artwork,
+                available = it.id !in off)
+        }
+    }
     else -> catalogTracks(c.kind, c.id).mapIndexed { i, t ->
         TrackRow(t.type, t.id, i + 1, t.name, t.attributes?.artistName, t.attributes?.durationInMillis, t.artwork, available = t.attributes?.playParams != null)
     }
