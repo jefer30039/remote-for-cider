@@ -219,14 +219,12 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         value = AnimatedCovers.load(remote, catalogId)
     }
     val video = if (wide) null else cover?.tall
-    // Tinte de textos e iconos: del fondo que tienen debajo. Con portada animada es la parte baja del vídeo
-    // reflejada (su fotograma fijo); si no, el color de fondo de la hoja.
+    // Lo que queda reflejado bajo los controles (la parte baja del fotograma fijo del vídeo): si es claro,
+    // se oscurece más (ver HeroArtwork). Los colores del texto los da el propio fondo (SheetTint.Vibrant).
     val under = rememberBottomColor(if (video != null) cover?.heroPreview() ?: state.track?.artwork?.sized(PreviewArtworkPx) else null)
     // Luminancia de la franja baja del vídeo: desde 0,5 se oscurece bajo los controles (ver HeroArtwork).
     val light = under?.let { ((it.luminance() - 0.5f) / 0.3f).coerceIn(0f, 1f) } ?: 0f
-    val tint = remember(under, target, video != null) {
-        cider.remote.app.ui.components.SheetTint.from(if (video != null) under ?: target else target)
-    }
+    val tint = cider.remote.app.ui.components.SheetTint.Vibrant
     // Con portada animada: dónde cae la carátula fija dentro del vídeo (de ahí sale la pieza al abrir la hoja).
     val context = LocalContext.current
     val squareTop by produceState(AnimatedCovers.peekSquareTop(cover), state.track?.artwork?.url, cover) {
@@ -612,7 +610,6 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
     val videoLayer = rememberGraphicsLayer()
     val near = rememberGraphicsLayer()
     val far = rememberGraphicsLayer()
-    val bottom = rememberGraphicsLayer()
     Box(Modifier.fillMaxSize().then(fly.outer)) {
     Box(Modifier.fillMaxSize().then(fly.inner)) {
         Spacer(
@@ -628,10 +625,6 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
                     return BlurEffect(radius, radius, TileMode.Clamp)
                 }
                 val nearBlur = blur(MirrorNearSigma)
-                val bottomMask = Brush.verticalGradient(
-                    *fadeStops(0f, 1f, from = 0f, to = 1f, steps = 24),
-                    startY = vh * 1.35f * k, endY = h * k,
-                )
                 val farBlur = blur(MirrorFarSigma)
                 // La suave se va en arco, con el mismo centro que el fundido del vídeo: en el eje, del 85 %
                 // al 120 % del alto del vídeo.
@@ -671,19 +664,6 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
                     // pantalla completa es lo que más cuesta).
                     clipRect(top = vh * 0.6f) {
                         scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(far) }
-                    }
-                    // Abajo del todo el desenfoque ancho mezcla todos los colores y quedaba gris: encima, la misma
-                    // capa saturada, fundida desde la altura del volumen hasta el borde.
-                    if (h > vh * 1.35f) {
-                        bottom.colorFilter = FarSaturation
-                        bottom.compositingStrategy = androidx.compose.ui.graphics.layer.CompositingStrategy.Offscreen
-                        bottom.record(small) {
-                            drawLayer(far)
-                            drawRect(bottomMask, blendMode = BlendMode.DstIn)
-                        }
-                        clipRect(top = vh * 1.35f) {
-                            scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(bottom) }
-                        }
                     }
                     clipRect(top = vh * 0.6f, bottom = vh * 1.2f) {
                         scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(near) }
@@ -771,19 +751,12 @@ private const val MirrorStretch = 1.8f
 private const val MirrorNearSigma = 0.035f
 private const val MirrorFarSigma = 0.22f
 
-/**
- * El desenfoque ancho mezcla todos los colores de la parte baja del vídeo y abajo del todo salía
- * gris pardo (saturación 0,25 con "The Mirror"); Apple conserva el tono (≈ 0,57 descontando el
- * retoque de color de su imagen). Esa franja se satura ×1,6 más (encima del ×1,3 de [MirrorColor]);
- * saturada entera ×2, el centro salía naranja vivo y los tiempos se perdían.
- */
-private val FarSaturation = androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(1.6f) })
 
 /**
- * El reflejo de Apple es más vivo y oscuro que el vídeo (con el color del vídeo ya corregido, ver
- * `VideoColor`): saturación × 1,3 y brillo × 0,82 llevan el fondo bajo el título de (189, 128, 69) a
- * (168, 103, 40) frente a (165, 102, 33) de iOS, y el de entre el progreso y los controles a
- * (155, 104, 53) frente a (148, 100, 47) ("The Mirror").
+ * El reflejo de Apple es más vivo y oscuro que el vídeo: saturación × 1,3 y brillo × 0,82. Comprobado
+ * contra una captura real de iOS 26 con "Mercury" (convertida de Display P3 a sRGB) con el color del
+ * vídeo ya corregido (`VideoColor`): entre el progreso y los controles (128, 66, 56) frente a
+ * (124, 64, 55). La franja de abajo saturada aparte (×1,6) sobraba con el vídeo corregido y se quitó.
  */
 private val MirrorColor = androidx.compose.ui.graphics.ColorFilter.colorMatrix(
     androidx.compose.ui.graphics.ColorMatrix().apply {
@@ -847,7 +820,7 @@ private fun CompactHeader(
         Column(Modifier.weight(1f).padding(horizontal = 14.dp).then(fade)) {
             TitleText(state, Apple.type.headline.copy(fontSize = 18.sp), Modifier.combinedClickableCompat(onClick = toAlbum))
             Text(track?.artistName.orEmpty(), style = Apple.type.body, color = LocalSheetTint.current.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.combinedClickableCompat(onClick = toArtist))
+                modifier = Modifier.plusBlend().combinedClickableCompat(onClick = toArtist))
         }
         Box(fade) { MoreMenu(remote, state) }
     }
@@ -876,16 +849,27 @@ private fun TitleText(state: PlayerState, style: androidx.compose.ui.text.TextSt
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(
             track?.name ?: stringResource(R.string.status_not_playing), style = style,
-            color = LocalSheetTint.current.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+            color = LocalSheetTint.current.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).plusBlend(),
         )
         if (track?.isExplicit == true) {
             val description = stringResource(R.string.explicit)
+            val LocalSheetTintPlus = LocalSheetTint.current.plus
+            // iOS 26: cuadro de blanco sumado al fondo (+45, como la pista de las barras) con la "E" recortada
+            // (se ve el fondo a través) y seminegrita. La capa propia hace que el recorte solo afecte al cuadro.
             Box(
-                Modifier.padding(start = 7.dp).size(15.dp).clip(RoundedCornerShape(3.dp)).background(Secondary)
+                Modifier.padding(start = 7.dp).size(15.dp)
+                    .graphicsLayer {
+                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                        if (LocalSheetTintPlus) blendMode = androidx.compose.ui.graphics.BlendMode.Plus
+                    }
+                    .clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = if (LocalSheetTintPlus) 0.18f else 0.62f))
                     .semantics { contentDescription = description },
                 contentAlignment = Alignment.Center,
             ) {
-                Text("E", style = Apple.type.caption.copy(fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold), color = Color.Black.copy(alpha = 0.75f))
+                Text(
+                    "E", style = Apple.type.caption.copy(fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.SemiBold), color = Color.Black,
+                    modifier = Modifier.graphicsLayer { blendMode = androidx.compose.ui.graphics.BlendMode.DstOut },
+                )
             }
         }
     }
@@ -904,7 +888,7 @@ private fun TitleRow(remote: CiderRemote, state: PlayerState, compact: Boolean =
             Text(
                 state.track?.artistName.orEmpty(), style = Apple.type.title3.copy(fontSize = size, lineHeight = line, fontWeight = FontWeight.Normal),
                 color = LocalSheetTint.current.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.then(if (compact) Modifier else Modifier.offset(y = (-2.2).dp)).combinedClickableCompat(onClick = toArtist),
+                modifier = Modifier.then(if (compact) Modifier else Modifier.offset(y = (-2.2).dp)).plusBlend().combinedClickableCompat(onClick = toArtist),
             )
         }
         // Favorita junto al "…" (iOS 26): centros a 46 dp.
@@ -981,6 +965,7 @@ private fun Progress(remote: CiderRemote, state: PlayerState) {
     val duration = progress.durationSec.coerceAtLeast(0.001)
     val shown = dragging?.let { it * duration } ?: position
     ThinSlider(
+        modifier = Modifier.plusBlend(),
         value = dragging ?: (position / duration).toFloat(),
         onValueChange = { dragging = it },
         onValueChangeFinished = { dragging?.let { remote.seek(it * duration) }; dragging = null },
@@ -1076,7 +1061,7 @@ private fun VolumeRow(remote: CiderRemote, state: PlayerState) {
             activeColor = tint.fill,
             inactiveColor = tint.track,
             description = stringResource(R.string.volume_description, (state.volume * 100).roundToInt()),
-            modifier = Modifier.weight(1f).padding(start = 4.dp, end = 13.dp),
+            modifier = Modifier.weight(1f).padding(start = 4.dp, end = 13.dp).plusBlend(),
         )
         Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = tint.icon, modifier = Modifier.size(19.dp).plusBlend())
     }

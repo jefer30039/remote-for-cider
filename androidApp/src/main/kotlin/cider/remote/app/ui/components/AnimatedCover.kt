@@ -47,9 +47,10 @@ import kotlinx.coroutines.withContext
  *    2026-11-18). Se calibra sola una vez por dispositivo: el `previewFrame` de Apple es el primer
  *    fotograma del vídeo, así que al pintarse ese fotograma se compara con la imagen y se ajusta
  *    una recta por canal (textura = a · imagen + b). En un teléfono que pinte bien sale la identidad.
- * 2. **Aspecto de iOS.** iOS pinta los vídeos BT.709 algo más oscuros que la decodificación estándar
- *    (≈ 0,98 × − 16 por canal medido contra una captura de iOS 26 con "The Mirror"); se aplica al
- *    vídeo y a su imagen de espera, para que no haya salto entre ellas.
+ * 2. **Nada más.** Una captura real de iOS 26 ("Mercury", en Display P3 convertida a sRGB) coincide con
+ *    la decodificación estándar (cara roja (203, 30, 39) frente a (203, 30, 37)). La curva más oscura
+ *    "de iOS" (≈ 0,98 × − 16) salió de una imagen promocional retocada y dejaba las portadas demasiado
+ *    saturadas: se quitó. La imagen de espera solo pierde su desfase, para que no salte al llegar el vídeo.
  */
 object VideoColor {
     private const val PREFS = "color_video"
@@ -73,8 +74,8 @@ object VideoColor {
         version.intValue++
     }
 
-    /** iOS frente a lo correcto, por canal (pendiente, desplazamiento en 0–255). */
-    private val Ios = floatArrayOf(0.98f, -13f, 0.99f, -21f, 0.95f, -14f)
+    /** Lo que se quiere frente a lo correcto, por canal (pendiente, desplazamiento en 0–255): iOS pinta lo correcto. */
+    private val Ios = floatArrayOf(1f, 0f, 1f, 0f, 1f, 0f)
 
     /**
      * El `previewFrame` no es exactamente el fotograma decodificado: sale más claro, igual en todos los
@@ -82,7 +83,7 @@ object VideoColor {
      */
     private val PreviewBias = floatArrayOf(8f, 10f, 9f)
 
-    /** Matriz para la imagen de espera (el `previewFrame`): se le quita su desfase y se le da el aspecto de iOS. */
+    /** Matriz para la imagen de espera (el `previewFrame`): se le quita su desfase. */
     val placeholder: androidx.compose.ui.graphics.ColorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(
         androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
             Ios[0], 0f, 0f, 0f, Ios[1] - Ios[0] * PreviewBias[0],

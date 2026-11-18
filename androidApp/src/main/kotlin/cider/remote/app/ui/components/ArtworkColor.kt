@@ -97,16 +97,14 @@ fun rememberBottomColor(url: String?, fraction: Float = 0.3f): Color? {
 }
 
 /**
- * Colores de texto e iconos de la hoja de reproducción, sacados del fondo que tienen debajo
- * (Apple Music en iOS 26, medido con "The Mirror" de Polo & Pan):
- * - título: casi blanco con un punto del tono del fondo ((255, 253, 233): s 0,09);
- * - artista y relleno de las barras: pastel del tono del fondo, algo más saturado (fondo h 32° s 0,75 →
- *   artista s 0,22 v 0,98, relleno s 0,31 v 1);
- * - tiempos e iconos: blanco **sumado** al fondo (`BlendMode.Plus`): Apple da fondo + 55 en los tiempos y
- *   + 123 en los iconos, igual en los tres canales, así que conservan el tono de lo que hay detrás;
- *   [time] e [icon] son ese blanco translúcido y hay que dibujarlos con suma ([plus]);
- * - pista de las barras: el pastel translúcido.
- * Con fondos grises sale blanco/gris, como antes.
+ * Colores de texto e iconos de la hoja de reproducción (vibrancia de iOS 26). No son colores fijos:
+ * cada pieza es blanco translúcido **sumado** a lo que tiene detrás en ese punto y en ese momento
+ * (`BlendMode.Plus`, ver `plusBlend` en NowPlayingSheet), así conservan el tono del fondo y cambian a
+ * lo largo de la pieza (la barra de progreso más rosa donde hay rojo detrás; "Lacy" blanco sobre la
+ * camiseta y "Steve" gris). Medido en una captura de Apple Music con "Mercury" de Steve Lacy, igual en
+ * los tres canales: título + 192, artista + 148, iconos + 120, relleno de las barras + 113, tiempos + 70,
+ * pista + 46 (y con "The Mirror" el título sale justo fondo + 192).
+ * [fill] va dibujado encima de [track] en la misma capa: 0,32 + 0,18 · 0,68 = 0,44.
  */
 data class SheetTint(
     val title: Color,
@@ -115,7 +113,7 @@ data class SheetTint(
     val fill: Color,
     val track: Color,
     val icon: Color,
-    /** Si [time] e [icon] van sumados al fondo (falso: blanco translúcido normal). */
+    /** Si las piezas van sumadas al fondo (falso: blanco translúcido normal). */
     val plus: Boolean = false,
 ) {
     companion object {
@@ -125,23 +123,15 @@ data class SheetTint(
             fill = Color.White.copy(alpha = 0.72f), track = Color.White.copy(alpha = 0.2f), icon = Color.White.copy(alpha = 0.62f),
         )
 
-        fun from(under: Color): SheetTint {
-            val hsv = FloatArray(3)
-            android.graphics.Color.colorToHSV(under.toArgb(), hsv)
-            // "Algo más saturado": el fondo de la app sale algo menos vivo que el de Apple.
-            val s = (hsv[1] * 1.3f).coerceAtMost(1f)
-            fun c(sat: Float, v: Float, alpha: Float = 1f) =
-                Color(android.graphics.Color.HSVToColor(floatArrayOf(hsv[0], (s * sat).coerceAtMost(0.6f), v))).copy(alpha = alpha)
-            return SheetTint(
-                title = c(0.1f, 1f),
-                secondary = c(0.4f, 0.98f),
-                time = Color.White.copy(alpha = 0.22f),
-                fill = c(0.55f, 1f),
-                track = c(0.55f, 1f, alpha = 0.4f),
-                icon = Color.White.copy(alpha = 0.48f),
-                plus = true,
-            )
-        }
+        val Vibrant = SheetTint(
+            title = Color.White.copy(alpha = 0.75f),
+            secondary = Color.White.copy(alpha = 0.58f),
+            time = Color.White.copy(alpha = 0.275f),
+            fill = Color.White.copy(alpha = 0.32f),
+            track = Color.White.copy(alpha = 0.18f),
+            icon = Color.White.copy(alpha = 0.47f),
+            plus = true,
+        )
     }
 }
 
