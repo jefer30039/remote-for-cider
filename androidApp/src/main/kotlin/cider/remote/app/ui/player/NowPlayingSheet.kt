@@ -36,6 +36,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import cider.remote.app.ui.components.rememberArtworkPalette
 import kotlinx.coroutines.delay
+import cider.remote.app.app
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -74,6 +77,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -158,6 +162,8 @@ import cider.remote.app.ui.components.rememberBottomColor
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import kotlin.math.roundToInt
 
 /** Colores de la hoja: blanco sobre el color de la carátula. */
@@ -166,6 +172,7 @@ private val Secondary = Color.White.copy(alpha = 0.62f)
 private val TimeColor = Color.White.copy(alpha = 0.45f)
 private val Tertiary = Color.White.copy(alpha = 0.25f)
 private val Chip = Color.White.copy(alpha = 0.16f)
+
 
 enum class SheetMode { Artwork, Lyrics, Queue }
 
@@ -908,6 +915,10 @@ private fun TitleRow(remote: CiderRemote, state: PlayerState, compact: Boolean =
 @Composable
 private fun MoreMenu(remote: CiderRemote, state: PlayerState) {
     var menu by remember { mutableStateOf(false) }
+    var sleepDialog by remember { mutableStateOf(false) }
+    val session = LocalContext.current.app.session
+    val sleep by session.sleep.collectAsStateWithLifecycle()
+    if (sleepDialog) SleepTimerDialog(onDismiss = { sleepDialog = false }) { minutes -> sleepDialog = false; session.setSleepTimer(minutes) }
     Box {
         GlassCircle(Icons.Filled.MoreHoriz, stringResource(R.string.action_more)) { menu = true }
         // De vidrio como los demás menús, con la paleta oscura: la hoja siempre es oscura.
@@ -927,9 +938,52 @@ private fun MoreMenu(remote: CiderRemote, state: PlayerState) {
                     Icons.Rounded.Shuffle,
                     stringResource(if (state.shuffle) R.string.action_shuffle_off else R.string.action_shuffle_on),
                 ) { menu = false; remote.toggleShuffle() }
+                cider.remote.app.ui.components.MenuRow(
+                    Icons.Filled.Bedtime, stringResource(R.string.sleep_timer), sleepLabel(sleep),
+                ) { menu = false; sleepDialog = true }
             }
         }
     }
+}
+
+/** Lo que queda del temporizador ("23 min", "Al acabar la canción") o "Desactivado"; se actualiza cada 20 s. */
+@Composable
+private fun sleepLabel(timer: cider.remote.app.session.SleepTimer?): String {
+    val now by produceState(System.currentTimeMillis(), timer) {
+        while (true) { value = System.currentTimeMillis(); delay(20_000) }
+    }
+    return when {
+        timer == null -> stringResource(R.string.sleep_off)
+        timer.endOfTrack -> stringResource(R.string.sleep_end_of_track)
+        else -> stringResource(R.string.sleep_remaining, (((timer.endsAtMs - now) / 60_000.0).let { kotlin.math.ceil(it) }.toInt()).coerceAtLeast(1))
+    }
+}
+
+/** Opciones del temporizador de apagado (pausa Cider). */
+@Composable
+private fun SleepTimerDialog(onDismiss: () -> Unit, onPick: (Int?) -> Unit) {
+    val options = listOf(
+        15 to stringResource(R.string.sleep_minutes, 15), 30 to stringResource(R.string.sleep_minutes, 30),
+        45 to stringResource(R.string.sleep_minutes, 45), 60 to stringResource(R.string.sleep_hour),
+        0 to stringResource(R.string.sleep_end_of_track),
+    )
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sleep_timer)) },
+        text = {
+            Column {
+                options.forEach { (minutes, label) ->
+                    Text(
+                        // Color del texto principal: con el del cuerpo del diálogo parecían desactivadas.
+                        label, style = Apple.type.body, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).combinedClickableCompat(onClick = { onPick(minutes) }).padding(vertical = 12.dp, horizontal = 4.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { onPick(null) }) { Text(stringResource(R.string.sleep_turn_off)) } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
 }
 
 /** Círculo translúcido de 31 dp con glifo de 23 dp (iOS 26: estrella de 18 dp, "…" de 16) y área táctil de 44 dp. */
@@ -959,8 +1013,12 @@ private fun Progress(remote: CiderRemote, state: PlayerState) {
             delay(100)
         }
     }
+    // Se vuelve a leer cada 5 s: cambia también al activar o desactivar Atmos, no solo con la canción.
     val quality by produceState<AudioQuality?>(null, state.track?.playParams?.id) {
-        value = runCatching { remote.api.audioQuality() }.getOrNull()
+        while (true) {
+            runCatching { remote.api.audioQuality() }.getOrNull()?.let { value = it }
+            delay(5_000)
+        }
     }
     val duration = progress.durationSec.coerceAtLeast(0.001)
     val shown = dragging?.let { it * duration } ?: position
@@ -980,19 +1038,38 @@ private fun Progress(remote: CiderRemote, state: PlayerState) {
         val p = m.measure(c); val up = 8.5.dp.roundToPx()
         layout(p.width, (p.height - up).coerceAtLeast(0)) { p.place(0, -up) }
     }) {
-        val timeStyle = Apple.type.caption.copy(fontWeight = FontWeight.SemiBold).tabular()
+        // Medium: en una captura de iOS ("SOS") el grosor de los tiempos y de "Lossless" queda entre
+        // Inter Regular y Medium (densidad de tinta 0,30–0,35; Inter SemiBold da 0,39–0,43).
+        val timeStyle = Apple.type.caption.copy(fontWeight = FontWeight.Medium).tabular()
         Text(formatTime(shown), style = timeStyle, color = TimeColor, modifier = Modifier.align(Alignment.CenterStart).plusBlend())
+        // Como iOS 26: logo y texto sin recuadro, en el color de los tiempos (sumado a lo de detrás).
+        // Solo cuando Cider dice que suena así (en un PC sin Atmos, Cider reproduce AAC aunque la
+        // canción tenga versión Atmos).
+        // "Lossless" va en un recuadro translúcido con la onda, algo más claro que los tiempos (captura de
+        // iOS con "SOS").
         quality?.badge?.let { badge ->
-            Row(
-                Modifier.align(Alignment.Center).plusBlend().clip(RoundedCornerShape(5.dp)).background(Chip)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            // Logotipo oficial de Dolby Atmos (vector del SVG, res/drawable/dolby_atmos.xml) al ancho medido en
+            // "MOON MUSiC" (iOS 26): 87,3 dp, apoyado en la línea base de los tiempos (la suya está al 76,9 %
+            // de su alto). El texto invisible da esa línea base en una fila de la misma altura que los tiempos.
+            if (badge == "Dolby Atmos") Row(Modifier.align(Alignment.Center).plusBlend()) {
+                Text("0", style = timeStyle, color = Color.Transparent, modifier = Modifier.width(0.dp).alignByBaseline())
+                Icon(
+                    androidx.compose.ui.res.painterResource(R.drawable.dolby_atmos), stringResource(R.string.audio_atmos), tint = TimeColor,
+                    modifier = Modifier.size(87.3.dp, 12.33.dp).alignBy { (it.measuredHeight * (12.0280151f / 15.6427517f)).toInt() },
+                )
+            } else Row(
+                // Medido en una captura ampliada de iOS (en múltiplos de la altura de mayúsculas, 8,7 dp aquí):
+                // recuadro de 2,4 (21 dp), fondo +21 (blanco 8 %), logo 15 × 9,5 dp a 6,6 dp del borde y del
+                // texto, que acaba a 7,2 dp del borde. Texto: Inter Medium (densidad 0,34 frente a 0,33).
+                Modifier.align(Alignment.Center).plusBlend().height(21.dp).clip(RoundedCornerShape(7.dp))
+                    .background(Color.White.copy(alpha = 0.08f)).padding(start = 6.6.dp, end = 7.2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.GraphicEq, null, tint = Secondary, modifier = Modifier.size(13.dp))
-                Text(badge, style = Apple.type.caption.copy(fontWeight = FontWeight.SemiBold), color = Secondary, modifier = Modifier.padding(start = 4.dp))
+                Icon(AppleIcons.Lossless, null, tint = Secondary, modifier = Modifier.size(15.dp, 9.5.dp))
+                Text(badge, style = timeStyle, color = Secondary, modifier = Modifier.padding(start = 6.6.dp))
             }
         }
-        Text("-" + formatTime(duration - shown), style = timeStyle, color = TimeColor, modifier = Modifier.align(Alignment.CenterEnd).plusBlend())
+        Text("\u2212" + formatTime(duration - shown), style = timeStyle, color = TimeColor, modifier = Modifier.align(Alignment.CenterEnd).plusBlend())
     }
 }
 
@@ -1084,16 +1161,111 @@ private fun OutputButton(remote: CiderRemote) {
         cider.remote.app.ui.ForceDark {
             // Centrado sobre el botón (44 dp): si no, arranca en su borde izquierdo y Android lo empuja contra el
             // borde derecho de la pantalla.
-            cider.remote.app.ui.components.GlassMenu(open, onDismiss = { open = false }, width = 260.dp, offset = androidx.compose.ui.unit.DpOffset((-108).dp, 0.dp)) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            cider.remote.app.ui.components.GlassMenu(open, onDismiss = { open = false }, width = 280.dp, offset = androidx.compose.ui.unit.DpOffset((-118).dp, 0.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)) {
+                    Row(Modifier.padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Laptop, null, tint = Apple.colors.accent, modifier = Modifier.size(22.dp))
                         Text(deviceName, style = Apple.type.headline, color = Apple.colors.label, modifier = Modifier.padding(start = 10.dp))
                     }
                     SpeakerBassRow(remote, open)
+                    AudioSettingsRows(remote, open)
                 }
             }
         }
+    }
+}
+
+/**
+ * Ajustes de audio de Cider (rutas `/audio/…`): crossfade con su duración, Dolby Atmos y modo de escucha.
+ * Se leen al abrir el menú y se cambian al momento; si Cider falla, se vuelven a leer.
+ */
+@Composable
+private fun AudioSettingsRows(remote: CiderRemote, visible: Boolean) {
+    val scope = rememberCoroutineScope()
+    var crossfade by remember { mutableStateOf<Boolean?>(null) }
+    var seconds by remember { mutableStateOf(5f) }
+    var atmos by remember { mutableStateOf<Boolean?>(null) }
+    // Modo de Atmos del dispositivo antes de apagarlo ("binaural" en un PC con salida estéreo).
+    var atmosMode by remember { mutableStateOf("binaural") }
+    var mode by remember { mutableStateOf<String?>(null) }
+    suspend fun load() {
+        runCatching { remote.api.audioSetting("crossfade") }.getOrNull()?.let { c ->
+            crossfade = c["enabled"]?.jsonPrimitive?.content == "true"
+            c["durationSec"]?.jsonPrimitive?.content?.toFloatOrNull()?.let { seconds = it }
+        }
+        // Lo que decide si suena Atmos es la preferencia del dispositivo (`devicePreferences.default`:
+        // off | passthrough | standard | binaural), no solo `enabled`.
+        runCatching { remote.api.audioSetting("atmos") }.getOrNull().let { a ->
+            if (a == null) { atmos = null; return@let }
+            val pref = (a["devicePreferences"] as? kotlinx.serialization.json.JsonObject)?.get("default")?.jsonPrimitive?.content
+            if (pref != null && pref != "off") atmosMode = pref
+            atmos = a["enabled"]?.jsonPrimitive?.content == "true" && pref != "off"
+        }
+        mode = runCatching { remote.api.audioSetting("listening-mode") }.getOrNull()
+            ?.takeIf { it["available"]?.jsonPrimitive?.content != "false" }?.get("mode")?.jsonPrimitive?.content
+    }
+    LaunchedEffect(visible) { if (visible) load() }
+    fun patch(name: String, body: kotlinx.serialization.json.JsonObject) {
+        scope.launch { runCatching { remote.api.setAudioSetting(name, body) }.onFailure { load() } }
+    }
+    crossfade?.let { on ->
+        SettingSwitch(stringResource(R.string.audio_crossfade), if (on) stringResource(R.string.audio_seconds, seconds.roundToInt()) else null, on) {
+            crossfade = it
+            patch("crossfade", kotlinx.serialization.json.buildJsonObject { put("enabled", it) })
+        }
+        // Barra fina como la de volumen (iOS), de 1 a 12 s en pasos de un segundo.
+        if (on) ThinSlider(
+            value = (seconds - 1f) / 11f,
+            onValueChange = { seconds = (1f + it * 11f).roundToInt().toFloat() },
+            onValueChangeFinished = { patch("crossfade", kotlinx.serialization.json.buildJsonObject { put("durationSec", seconds.roundToInt()) }) },
+            activeColor = Apple.colors.accent,
+            inactiveColor = Apple.colors.label.copy(alpha = 0.18f),
+            description = stringResource(R.string.audio_seconds, seconds.roundToInt()),
+        )
+    }
+    atmos?.let { on ->
+        SettingSwitch(stringResource(R.string.audio_atmos), null, on) {
+            atmos = it
+            patch("atmos", kotlinx.serialization.json.buildJsonObject {
+                if (it) put("enabled", true)
+                put("devicePreferences", kotlinx.serialization.json.buildJsonObject { put("default", if (it) atmosMode else "off") })
+            })
+        }
+    }
+    mode?.let { current ->
+        Text(stringResource(R.string.audio_listening_mode), style = Apple.type.body, color = Apple.colors.label, modifier = Modifier.padding(top = 14.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((value, label) in listOf("off" to R.string.audio_mode_off, "game" to R.string.audio_mode_game, "antifatigue" to R.string.audio_mode_antifatigue)) {
+                val selected = current == value
+                val text = stringResource(label)
+                Box(
+                    // Ancho según el texto ("Anti-fatigue" no cabe en un tercio).
+                    Modifier.weight(text.length + 6f).clip(RoundedCornerShape(10.dp))
+                        .background(if (selected) Apple.colors.accent else Apple.colors.fill)
+                        .combinedClickableCompat(onClick = {
+                            mode = value
+                            patch("listening-mode", kotlinx.serialization.json.buildJsonObject { put("mode", value) })
+                        })
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text, style = Apple.type.footnote, color = if (selected) Color.White else Apple.colors.label, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+/** Fila con título, subtítulo opcional e interruptor (menú del equipo). */
+@Composable
+private fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+    // Filas de ~52 dp como las celdas de iOS (antes iban pegadas, 8 dp entre una y otra).
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Apple.type.body, color = Apple.colors.label)
+            subtitle?.let { Text(it, style = Apple.type.footnote, color = Apple.colors.secondaryLabel) }
+        }
+        cider.remote.app.ui.liquid.LiquidToggle(checked = checked, onCheckedChange = onChange)
     }
 }
 
@@ -1109,7 +1281,7 @@ private fun SpeakerBassRow(remote: CiderRemote, visible: Boolean) {
     LaunchedEffect(visible) { if (visible) mode = remote.api.speakerMode() }
     val current = mode?.takeIf { it.available } ?: return
     Row(
-        Modifier.fillMaxWidth().padding(top = 8.dp),
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -1119,7 +1291,7 @@ private fun SpeakerBassRow(remote: CiderRemote, visible: Boolean) {
                 style = Apple.type.footnote, color = Apple.colors.secondaryLabel,
             )
         }
-        androidx.compose.material3.Switch(
+        cider.remote.app.ui.liquid.LiquidToggle(
             checked = current.bass,
             enabled = !busy,
             onCheckedChange = { on ->

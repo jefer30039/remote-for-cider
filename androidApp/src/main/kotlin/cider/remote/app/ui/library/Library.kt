@@ -115,6 +115,8 @@ import cider.remote.model.AnimatedCover
 import cider.remote.model.Artwork
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.async
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -394,6 +396,24 @@ fun LibraryList(remote: CiderRemote, route: Route, contentPadding: PaddingValues
 
     val grid = route == Route.Albums
     val layout = LocalWindowLayout.current
+    var creatingPlaylist by remember { mutableStateOf(false) }
+    val listScope = rememberCoroutineScope()
+    val listContext = androidx.compose.ui.platform.LocalContext.current
+    if (creatingPlaylist) cider.remote.app.ui.components.PlaylistNameDialog(
+        title = stringResource(R.string.playlist_new_title), initial = "", confirm = stringResource(R.string.action_create),
+        onDismiss = { creatingPlaylist = false },
+    ) { name ->
+        creatingPlaylist = false
+        listScope.launch {
+            val created = runCatching { remote.api.createPlaylist(name) }.getOrNull()
+            if (created == null) {
+                android.widget.Toast.makeText(listContext, listContext.getString(R.string.playlist_create_failed), android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            items.clear(); total = null; loadMore()
+            onOpen(Route.Collection("library-playlists", created, name, null, null))
+        }
+    }
     LazyVerticalGrid(
         columns = GridCells.Fixed(if (grid) layout.columns(160.dp, 2) else 1),
         state = gridState,
@@ -403,6 +423,22 @@ fun LibraryList(remote: CiderRemote, route: Route, contentPadding: PaddingValues
     ) {
         val full: (@Composable () -> Unit) -> Unit = { c -> if (grid) fullBleed(c) else fullWidth(c) }
         full { LargeTitle(route.label()) }
+        // "Nueva playlist…" (Apple Music): la crea vacía y la abre.
+        // Mismas medidas que las filas de playlists (EntryRow): carátula de 56 dp y texto a 70 dp.
+        if (route == Route.Playlists) full {
+            ListRow(
+                title = stringResource(R.string.playlist_new),
+                titleColor = Apple.colors.accent,
+                leading = {
+                    Box(Modifier.size(56.dp).clip(RoundedCornerShape(5.dp)).background(Apple.colors.fill), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Add, null, tint = Apple.colors.accent, modifier = Modifier.size(28.dp))
+                    }
+                },
+                leadingWidth = 70.dp,
+                minHeight = 68.dp,
+                onClick = { creatingPlaylist = true },
+            )
+        }
         if (items.isEmpty() && error != null) full { EmptyState(stringResource(R.string.load_error), error) }
         if (items.isEmpty() && total == 0) full {
             EmptyState(stringResource(when (route) {
@@ -431,7 +467,7 @@ private fun EntryRow(remote: CiderRemote, e: Entry, onOpen: (Route) -> Unit) {
     val isSong = e.playType == "library-songs"
     Box {
         QueueSwipe(remote, e.playType, e.id, enabled = !isArtist) { ListRow(
-            title = e.title,
+            title = RenamedPlaylists[e.id] ?: e.title,
             subtitle = e.subtitle,
             titleStyle = if (isSong) Apple.type.callout else Apple.type.body,
             leading = {
@@ -450,7 +486,7 @@ private fun EntryRow(remote: CiderRemote, e: Entry, onOpen: (Route) -> Unit) {
             },
             onLongClick = if (isArtist) null else ({ menu = true }),
         ) }
-        Box(Modifier.align(Alignment.TopEnd)) { PlayMenu(remote, menu, { menu = false }, e.playType, e.id) }
+        Box(Modifier.align(Alignment.TopEnd)) { PlayMenu(remote, menu, { menu = false }, e.playType, e.id, RenamedPlaylists[e.id] ?: e.title) }
     }
 }
 
@@ -476,16 +512,39 @@ fun QueueSwipe(remote: CiderRemote, type: String, id: String, enabled: Boolean =
 }
 
 /** Menú contextual (pulsación larga o ⋮), como en Apple Music. */
+/**
+ * Nombres cambiados en esta sesión: la cabecera de la playlist y las listas (en caché) los
+ * enseñan al momento sin esperar a recargar.
+ */
+val RenamedPlaylists = androidx.compose.runtime.mutableStateMapOf<String, String>()
+
 @Composable
-fun PlayMenu(remote: CiderRemote, expanded: Boolean, onDismiss: () -> Unit, type: String, id: String) {
+fun PlayMenu(remote: CiderRemote, expanded: Boolean, onDismiss: () -> Unit, type: String, id: String, name: String = "") {
     // Las canciones tienen el menú completo de iOS; álbumes y playlists, el corto.
     if (type.endsWith("songs")) { SongMenu(remote, expanded, onDismiss, type, id); return }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     fun run(block: suspend () -> Unit) { onDismiss(); scope.launch { runCatching { block() } } }
+    // Playlists de la biblioteca: cambiar el nombre (Cider rechaza las inteligentes y las que no son tuyas).
+    var renaming by remember { mutableStateOf(false) }
+    if (renaming) cider.remote.app.ui.components.PlaylistNameDialog(
+        title = stringResource(R.string.playlist_rename_title), initial = RenamedPlaylists[id] ?: name, confirm = stringResource(R.string.action_rename),
+        onDismiss = { renaming = false },
+    ) { name ->
+        renaming = false
+        scope.launch {
+            val ok = runCatching { remote.api.renamePlaylist(id, name) }.isSuccess
+            if (ok) RenamedPlaylists[id] = name
+            android.widget.Toast.makeText(
+                context, context.getString(if (ok) R.string.playlist_renamed else R.string.playlist_rename_failed), android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
     GlassMenu(expanded, onDismiss, width = 240.dp) {
         MenuRow(AppleIcons.Play, stringResource(R.string.action_play)) { run { remote.api.playCollection(type, id) } }
         MenuRow(Icons.AutoMirrored.Rounded.PlaylistPlay, stringResource(R.string.action_play_next)) { run { remote.api.queueAddNext(type, id) } }
         MenuRow(Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.action_play_last)) { run { remote.api.queueAddLater(type, id) } }
+        if (type == "library-playlists") MenuRow(Icons.Filled.Edit, stringResource(R.string.playlist_rename)) { onDismiss(); renaming = true }
     }
 }
 
@@ -608,7 +667,7 @@ private fun WideCollectionHeader(
                 Modifier.size(300.dp).shadow(18.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)),
             ) { ArtworkImage(route.artwork, 300.dp, px = 800, shape = RoundedCornerShape(8.dp)) }
             Column(Modifier.weight(1f).padding(start = 32.dp)) {
-                Text(route.title, style = Apple.type.title1, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(RenamedPlaylists[route.id] ?: route.title, style = Apple.type.title1, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (!route.subtitle.isNullOrBlank()) Text(
                     route.subtitle, style = Apple.type.title1.copy(fontWeight = FontWeight.Normal),
                     color = Color.White.copy(alpha = 0.9f), maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -739,7 +798,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                         Modifier.offset(y = heroOverlap).padding(horizontal = Margin),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(route.title, style = Apple.type.title2, color = Color.White, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(RenamedPlaylists[route.id] ?: route.title, style = Apple.type.title2, color = Color.White, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (!route.subtitle.isNullOrBlank()) Text(
                             route.subtitle, style = Apple.type.title3.copy(fontWeight = FontWeight.Normal),
                             color = Color.White.copy(alpha = 0.9f), textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,

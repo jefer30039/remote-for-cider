@@ -71,6 +71,8 @@ import cider.remote.model.SearchCategory
 import cider.remote.model.SearchResults
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.launch
 
 // Teléfono / tablet (Apple Music en Xiaomi Pad: 5 columnas de 114 dp de alto).
@@ -93,6 +95,12 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
     // el teclado seguía abierto encima de ella (la búsqueda queda compuesta debajo con el foco).
     val dismiss: () -> Unit = { keyboard?.hide(); focus.clearFocus() }
     val open: (Route) -> Unit = { dismiss(); onOpen(it) }
+    // Recientes: con el campo enfocado y vacío se ven en lugar de las categorías (Apple Music).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    remember { RecentSearches.load(context) }
+    val recents by RecentSearches.items.collectAsState()
+    var fieldFocused by remember { mutableStateOf(false) }
+    val addRecent: (AmItem) -> Unit = { RecentSearches.add(context, it) }
 
     // Busca mientras se escribe, con una pausa para no saturar a Cider.
     LaunchedEffect(term) {
@@ -131,7 +139,7 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
                         cursorBrush = SolidColor(Apple.colors.accent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().onFocusChanged { fieldFocused = it.isFocused },
                     )
                 }
                 if (term.isNotEmpty()) Box(
@@ -143,6 +151,21 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
         full { Spacer(Modifier.height(18.dp)) }
         val r = results
         when {
+            term.isBlank() && fieldFocused && recents.isNotEmpty() -> {
+                full {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = Margin), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.search_recent), style = Apple.type.title3.copy(fontWeight = FontWeight.Bold), color = Apple.colors.label, modifier = Modifier.weight(1f))
+                        Text(
+                            stringResource(R.string.action_clear), style = Apple.type.body, color = Apple.colors.accent,
+                            // Desplazado lo que mide su relleno: el texto acaba en el margen, como la lista.
+                            modifier = Modifier.offset(x = 6.dp).clip(RoundedCornerShape(8.dp)).combinedClickableCompat(onClick = { RecentSearches.clear(context) }).padding(horizontal = 6.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+                items(recents, key = { "rec-${it.type}-${it.id}" }, span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.bleed(Margin)) { ResultRow(remote, it, open, dismiss, addRecent) }
+                }
+            }
             term.isBlank() -> items(categories.size, key = { "cat-" + categories[it].id }) { i ->
                 CategoryTile(
                     categories[i],
@@ -159,10 +182,10 @@ fun SearchScreen(remote: CiderRemote, contentPadding: PaddingValues, onOpen: (Ro
             listOf(r.songs, r.albums, r.artists, r.playlists).all { it?.data.isNullOrEmpty() } ->
                 full { EmptyState(stringResource(R.string.search_no_results), stringResource(R.string.search_try_other)) }
             else -> {
-                section(R.string.library_artists, r.artists?.data) { ResultRow(remote, it, open, dismiss) }
-                section(R.string.library_albums, r.albums?.data) { ResultRow(remote, it, open, dismiss) }
-                section(R.string.library_songs, r.songs?.data) { ResultRow(remote, it, open, dismiss) }
-                section(R.string.library_playlists, r.playlists?.data) { ResultRow(remote, it, open, dismiss) }
+                section(R.string.library_artists, r.artists?.data) { ResultRow(remote, it, open, dismiss, addRecent) }
+                section(R.string.library_albums, r.albums?.data) { ResultRow(remote, it, open, dismiss, addRecent) }
+                section(R.string.library_songs, r.songs?.data) { ResultRow(remote, it, open, dismiss, addRecent) }
+                section(R.string.library_playlists, r.playlists?.data) { ResultRow(remote, it, open, dismiss, addRecent) }
             }
         }
     }
@@ -202,7 +225,7 @@ private fun LazyGridScope.section(@StringRes title: Int, items: List<AmItem>?, r
 }
 
 @Composable
-private fun ResultRow(remote: CiderRemote, item: AmItem, onOpen: (Route) -> Unit, onTap: () -> Unit) {
+private fun ResultRow(remote: CiderRemote, item: AmItem, onOpen: (Route) -> Unit, onTap: () -> Unit, onChosen: (AmItem) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     val a = item.attributes
@@ -221,6 +244,7 @@ private fun ResultRow(remote: CiderRemote, item: AmItem, onOpen: (Route) -> Unit
             leadingWidth = 62.dp,
             minHeight = 60.dp,
             onClick = {
+                onChosen(item)
                 val route = item.toRoute()
                 if (route != null) onOpen(route)
                 else { onTap(); scope.launch { runCatching { remote.api.playItem(item.type, item.id) } } }

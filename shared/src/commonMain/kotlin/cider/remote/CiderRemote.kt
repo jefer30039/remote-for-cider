@@ -193,6 +193,13 @@ class CiderRemote(
         launchCommand { if (playing) api.play() else api.pause() }
     }
 
+    /** Pausa (el temporizador de apagado): si ya está en pausa, no hace nada. */
+    fun pause() {
+        if (!_state.value.isPlaying) return
+        _state.update { it.copy(progress = it.progress.rebased(playing = false)) }
+        launchCommand { api.pause() }
+    }
+
     fun next() = launchCommand { api.next() }
     fun previous() = launchCommand { api.previous() }
 
@@ -223,6 +230,38 @@ class CiderRemote(
         val next = !_state.value.shuffle
         _state.update { it.copy(shuffle = next) }
         launchCommand { api.setShuffle(next) }
+    }
+
+    /**
+     * "Borrar" de la cola: vacía lo que viene después sin cortar la canción que suena. Se usa
+     * `DELETE /queue`; si Cider se llevara también la actual, se vuelve a poner en el mismo segundo
+     * (y en pausa si lo estaba). Sin probar contra Cider todavía (2026-11-18).
+     */
+    suspend fun clearUpNext() {
+        val before = _state.value
+        val params = before.track?.playParams
+        val position = before.progress.positionNow()
+        val wasPlaying = before.isPlaying
+        api.queueClear()
+        if (params == null) return
+        kotlinx.coroutines.delay(800)
+        val now = runCatching { api.playback() }.getOrNull()
+        val same = now?.nowPlaying?.let { it.name.isNotBlank() && (it.playParams?.id == params.id || it.playParams?.catalogId == params.id || it.playParams?.id == params.catalogId) } == true
+        if (same) return
+        val type = when {
+            params.id.startsWith("i.") || params.id.startsWith("l.") -> "library-songs"
+            else -> "songs"
+        }
+        api.playItem(type, params.id)
+        // Cider tarda en cargar la canción: el seek de antes de que suene no se aplica.
+        repeat(10) {
+            kotlinx.coroutines.delay(400)
+            if (runCatching { api.playback().nowPlaying?.name }.getOrNull()?.isNotBlank() == true) {
+                api.seek(position)
+                if (!wasPlaying) api.pause()
+                return
+            }
+        }
     }
 
     fun toggleInLibrary() {

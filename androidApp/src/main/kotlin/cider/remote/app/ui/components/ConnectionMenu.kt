@@ -61,6 +61,7 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
     var menu by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var about by remember { mutableStateOf(false) }
+    var updating by remember { mutableStateOf<cider.remote.app.data.Update?>(null) }
     val updates = LocalContext.current.app.updates
     val updateStatus by updates.status.collectAsStateWithLifecycle(UpdateStatus(true, 0L, null))
     val uriHandler = LocalUriHandler.current
@@ -92,7 +93,7 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.update_available, update.version), color = Apple.colors.accent) },
                     leadingIcon = { Icon(Icons.Outlined.SystemUpdate, null, tint = Apple.colors.accent) },
-                    onClick = { menu = false; uriHandler.openUri(update.pageUrl) },
+                    onClick = { menu = false; updating = update },
                 )
             }
             DropdownMenuItem(
@@ -103,12 +104,13 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
         }
     }
     if (editing) HostDialog(host, onDismiss = { editing = false }, onSave = { session.changeHost(it); editing = false })
-    if (about) AboutDialog(updates, updateStatus, onDismiss = { about = false })
+    if (about) AboutDialog(updates, updateStatus, onDismiss = { about = false }, onUpdate = { about = false; updating = it })
+    updating?.let { UpdateDialog(it, onDismiss = { updating = null }) }
 }
 
 /** Versión, aviso de proyecto no oficial, enlace al código y actualizaciones. */
 @Composable
-private fun AboutDialog(updates: UpdateChecker, status: UpdateStatus, onDismiss: () -> Unit) {
+private fun AboutDialog(updates: UpdateChecker, status: UpdateStatus, onDismiss: () -> Unit, onUpdate: (cider.remote.app.data.Update) -> Unit) {
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
@@ -133,7 +135,7 @@ private fun AboutDialog(updates: UpdateChecker, status: UpdateStatus, onDismiss:
                         Text(stringResource(R.string.update_toggle_hint), color = Apple.colors.secondaryLabel, style = Apple.type.footnote)
                     }
                     Spacer(Modifier.width(12.dp))
-                    Switch(checked = status.enabled, onCheckedChange = { scope.launch { updates.setEnabled(it) } })
+                    cider.remote.app.ui.liquid.LiquidToggle(checked = status.enabled, onCheckedChange = { scope.launch { updates.setEnabled(it) } })
                 }
                 if (status.enabled) {
                     Spacer(Modifier.height(12.dp))
@@ -142,7 +144,7 @@ private fun AboutDialog(updates: UpdateChecker, status: UpdateStatus, onDismiss:
                         update != null -> Text(
                             stringResource(R.string.update_download, update.version),
                             color = Apple.colors.accent,
-                            modifier = Modifier.clickable { uriHandler.openUri(update.pageUrl) },
+                            modifier = Modifier.clickable { onUpdate(update) },
                         )
                         checked == false -> Text(stringResource(R.string.update_check_failed), color = Apple.colors.secondaryLabel)
                         checked == true -> Text(stringResource(R.string.update_up_to_date), color = Apple.colors.secondaryLabel)
@@ -159,6 +161,65 @@ private fun AboutDialog(updates: UpdateChecker, status: UpdateStatus, onDismiss:
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+    )
+}
+
+/**
+ * Actualización desde la app: notas de la versión, descarga con progreso e instalador de Android
+ * (UpdateInstaller). Si Android no deja instalar desde la app, lleva al ajuste; siempre queda el
+ * enlace a la página de la release.
+ */
+@Composable
+private fun UpdateDialog(update: cider.remote.app.data.Update, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val installer = context.app.installer
+    val state by installer.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
+    AlertDialog(
+        onDismissRequest = { if (state !is cider.remote.app.data.InstallState.Downloading) { installer.reset(); onDismiss() } },
+        title = { Text(stringResource(R.string.update_title, update.version)) },
+        text = {
+            Column {
+                // Las notas de la release vienen en inglés y español; se enseña el principio.
+                val notes = update.notes.lines().filter { it.startsWith("- ") }.take(6).joinToString("\n") { "• " + it.removePrefix("- ").replace("**", "") }
+                if (notes.isNotBlank()) Text(notes, style = Apple.type.footnote, color = Apple.colors.secondaryLabel)
+                Spacer(Modifier.height(12.dp))
+                when (val s = state) {
+                    is cider.remote.app.data.InstallState.Downloading -> {
+                        Text(stringResource(R.string.update_downloading), style = Apple.type.subhead)
+                        Spacer(Modifier.height(8.dp))
+                        if (s.progress != null) androidx.compose.material3.LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth())
+                        else androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    cider.remote.app.data.InstallState.NeedsPermission -> Text(stringResource(R.string.update_needs_permission), style = Apple.type.subhead)
+                    is cider.remote.app.data.InstallState.Failed -> Text(stringResource(R.string.update_failed), style = Apple.type.subhead, color = Apple.colors.secondaryLabel)
+                    cider.remote.app.data.InstallState.Ready -> Text(stringResource(R.string.update_ready), style = Apple.type.subhead)
+                    cider.remote.app.data.InstallState.Idle -> Unit
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.update_open_page), color = Apple.colors.accent, style = Apple.type.subhead,
+                    modifier = Modifier.clickable { uriHandler.openUri(update.pageUrl) },
+                )
+            }
+        },
+        confirmButton = {
+            val apk = update.apkUrl
+            when (state) {
+                is cider.remote.app.data.InstallState.Downloading -> Unit
+                cider.remote.app.data.InstallState.NeedsPermission -> TextButton(onClick = { installer.reset(); installer.openPermissionSettings() }) {
+                    Text(stringResource(R.string.update_allow))
+                }
+                cider.remote.app.data.InstallState.Ready -> TextButton(onClick = { installer.install() }) { Text(stringResource(R.string.update_install)) }
+                else -> if (apk != null) TextButton(onClick = { scope.launch { installer.downloadAndInstall(apk) } }) {
+                    Text(stringResource(R.string.update_install))
+                }
+            }
+        },
+        dismissButton = {
+            if (state !is cider.remote.app.data.InstallState.Downloading) TextButton(onClick = { installer.reset(); onDismiss() }) { Text(stringResource(R.string.action_close)) }
+        },
     )
 }
 

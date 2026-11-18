@@ -100,6 +100,12 @@ class CiderApi(
     suspend fun setAutoplay(enabled: Boolean) =
         command(HttpMethod.Put, "/playback/autoplay", buildJsonObject { put("enabled", enabled) })
 
+    /** Reproducción automática (∞): al acabar la cola, Cider sigue con música parecida. */
+    suspend fun autoplay(): Boolean = get<JsonObject>("/playback/autoplay")["enabled"]?.jsonPrimitive?.content == "true"
+
+    /** Reproduce un enlace de Apple Music (`https://music.apple.com/...`) tal cual. */
+    suspend fun playUrl(url: String) = command(HttpMethod.Post, "/playback/play-url", buildJsonObject { put("url", url) })
+
     /** [type] estilo Apple Music: `songs`, `albums`, `playlists`, `library-songs`… */
     suspend fun playItem(type: String, id: String) =
         command(HttpMethod.Post, "/playback/play-item", typeId(type, id))
@@ -142,7 +148,35 @@ class CiderApi(
             putJsonArray("tracks") { tracks.forEach { (type, id) -> addJsonObject { put("type", type); put("id", id) } } }
         })
 
+    /**
+     * Crea una playlist en la biblioteca, con canciones opcionales (las del catálogo se importan).
+     * Devuelve su id. Cider no deja borrar playlists: crear es definitivo.
+     */
+    suspend fun createPlaylist(name: String, tracks: List<Pair<String, String>> = emptyList()): String? {
+        val body = buildJsonObject {
+            put("name", name)
+            if (tracks.isNotEmpty()) {
+                put("allowLibraryImport", true)
+                putJsonArray("tracks") { tracks.forEach { (type, id) -> addJsonObject { put("type", type); put("id", id) } } }
+            }
+        }
+        val env: Envelope<JsonObject> = request(HttpMethod.Post, "/playlists") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
+        return env.data["id"]?.jsonPrimitive?.content
+    }
+
+    suspend fun renamePlaylist(id: String, name: String) =
+        command(HttpMethod.Patch, "/playlists/$id", buildJsonObject { put("name", name) })
+
     // --- Audio ---
+    /**
+     * Ajustes de audio de Cider tal cual: `crossfade` ({enabled, durationSec 0–30, …}), `automix`
+     * ({enabled, …}), `atmos` ({enabled, binaural, …}) y `listening-mode` ({mode: off|game|antifatigue}).
+     */
+    suspend fun audioSetting(name: String): JsonObject = get("/audio/$name")
+    suspend fun setAudioSetting(name: String, body: JsonObject) = command(HttpMethod.Patch, "/audio/$name", body)
     suspend fun volume(): Double = get<JsonObject>("/audio/volume")["volume"]!!.jsonPrimitive.content.toDouble()
     suspend fun setVolume(volume: Double) =
         command(HttpMethod.Patch, "/audio/volume", buildJsonObject { put("volume", volume.coerceIn(0.0, 1.0)) })
@@ -274,6 +308,9 @@ class CiderApi(
         amapiRaw("v1/catalog/\$STOREFRONT/artists/$artistId/albums?limit=50")
 
     /** Canciones de un álbum o playlist del catálogo (`albums` / `playlists`). */
+    /** Un elemento del catálogo (`albums`, `playlists`, `artists`, `songs`…) con sus atributos. */
+    suspend fun catalogItem(type: String, id: String): AmItem? = amapiRaw("v1/catalog/\$STOREFRONT/$type/$id").firstOrNull()
+
     suspend fun catalogTracks(type: String, id: String): List<AmItem> =
         amapiRaw("v1/catalog/\$STOREFRONT/$type/$id/tracks?limit=100")
 

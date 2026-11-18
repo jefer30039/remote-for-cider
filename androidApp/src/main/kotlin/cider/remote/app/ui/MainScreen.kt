@@ -283,6 +283,30 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         val nested = topEntry.nested
         val transition = pages.transition
         val open: (Route) -> Unit = { pages.push(it) }
+        // Enlaces de Apple Music tocados o compartidos (AppleMusicLinks): una canción suena y abre la hoja;
+        // un álbum, playlist o artista abre su página; lo demás (emisoras…) se manda tal cual a Cider.
+        // Se recogen en un solo efecto: si la clave fuera el enlace, vaciarlo reiniciaría el efecto y
+        // cancelaría la consulta a medias (salía "no se pudo abrir").
+        val linkContext = androidx.compose.ui.platform.LocalContext.current
+        LaunchedEffect(remote) { AppleMusicLinks.pending.collect { link ->
+            if (link == null) return@collect
+            AppleMusicLinks.pending.value = null
+            val target = AppleMusicLinks.parse(link)
+            val ok = runCatching {
+                val song = target?.song ?: target?.id?.takeIf { target.kind == "song" }
+                when {
+                    song != null -> { remote.api.playItem("songs", song); delay(600); sheet.open(tap = true) }
+                    target?.kind == "album" || target?.kind == "playlist" -> {
+                        val type = target.kind + "s"
+                        val item = remote.api.catalogItem(type, target.id)
+                        open(Route.Collection(type, target.id, item?.name.orEmpty(), item?.attributes?.artistName.takeIf { type == "albums" }, item?.artwork))
+                    }
+                    target?.kind == "artist" -> open(Route.Artist(target.id, remote.api.catalogItem("artists", target.id)?.name.orEmpty(), catalog = true))
+                    else -> remote.api.playUrl(link)
+                }
+            }.isSuccess
+            if (!ok) android.widget.Toast.makeText(linkContext, linkContext.getString(cider.remote.app.R.string.link_failed), android.widget.Toast.LENGTH_SHORT).show()
+        } }
         // Las páginas con portada (álbum, artista) dibujan bajo la barra de estado.
         fun listPadding(nested: Boolean) = PaddingValues(top = if (wide) wideTop else top + if (nested) TopButtonsHeight else 0.dp, bottom = bottom)
         val heroPadding = PaddingValues(bottom = bottom)
@@ -486,7 +510,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         ) {
             var menu by remember { mutableStateOf(false) }
             GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true }, tint = topLabel.value, backdrop = haze)
-            PlayMenu(remote, menu, { menu = false }, menuRoute.kind, menuRoute.id)
+            PlayMenu(remote, menu, { menu = false }, menuRoute.kind, menuRoute.id, menuRoute.title)
         }
 
         // Desvanecido del contenido bajo las barras flotantes, en vez de un fondo sólido (suave: hasta el 50 % del color de fondo, 40 % negro en álbum y artista).

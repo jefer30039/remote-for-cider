@@ -274,21 +274,26 @@ private fun rememberMiniStatus(state: PlayerState, onOpen: () -> Unit): MiniStat
     val session = LocalContext.current.app.session
     val searching by session.searching.collectAsStateWithLifecycle()
     val track = state.track
-    val offline = state.link is Link.Offline
+    // Al volver a la app el socket tarda un momento en reconectar y el enlace pasa por "sin conexión":
+    // solo se enseña si dura más de 3 s (antes parpadeaba "No se puede conectar con Cider" cada vez).
+    val linkOffline = state.link is Link.Offline
+    val offline by androidx.compose.runtime.produceState(false, linkOffline) {
+        if (linkOffline) { kotlinx.coroutines.delay(3000); value = true } else value = false
+    }
     val offlineTitle = stringResource(R.string.status_offline)
     val offlineSubtitle = stringResource(if (searching) R.string.status_searching_network else R.string.status_tap_to_search)
     return when {
         track != null -> MiniStatus(
             track.name,
-            when (state.link) {
-                is Link.Offline -> stringResource(if (searching) R.string.status_searching_network else R.string.status_offline)
-                Link.Connecting -> stringResource(R.string.status_connecting)
-                Link.Online -> track.artistName
+            when {
+                offline -> stringResource(if (searching) R.string.status_searching_network else R.string.status_offline)
+                state.link == Link.Connecting -> stringResource(R.string.status_connecting)
+                else -> track.artistName
             },
             null, active = !offline, onTap = onOpen,
         )
         offline -> MiniStatus(offlineTitle, offlineSubtitle, Icons.Filled.WifiOff, active = false, onTap = { session.searchNow() })
-        state.link == Link.Connecting -> MiniStatus(stringResource(R.string.status_connecting), null, Icons.Filled.MusicNote, active = false, onTap = {})
+        state.link == Link.Connecting || linkOffline -> MiniStatus(stringResource(R.string.status_connecting), null, Icons.Filled.MusicNote, active = false, onTap = {})
         else -> MiniStatus(stringResource(R.string.status_not_playing), null, Icons.Filled.MusicNote, active = false, onTap = {})
     }
 }

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -86,6 +88,21 @@ fun SongMenu(remote: CiderRemote, expanded: Boolean, onDismiss: () -> Unit, type
     val context = LocalContext.current
     val open = LocalOpenRoute.current
     var picking by remember { mutableStateOf(false) }
+    // "Nueva playlist…" desde "Añadir a playlist": se crea ya con esta canción.
+    var creating by remember { mutableStateOf(false) }
+    if (creating) PlaylistNameDialog(
+        title = stringResource(R.string.playlist_new_title), initial = "", confirm = stringResource(R.string.action_create),
+        onDismiss = { creating = false },
+    ) { name ->
+        creating = false
+        scope.launch {
+            val ok = runCatching { remote.api.createPlaylist(name, listOf(type to id)) }.isSuccess
+            Toast.makeText(
+                context, if (ok) context.getString(R.string.playlist_added, name) else context.getString(R.string.playlist_add_failed),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
     var playlists by remember { mutableStateOf<List<LibraryPlaylist>?>(null) }
     // Una consulta al abrir el menú; sirve para compartir y para ir al álbum o al artista.
     val links by produceState(linksCache[id], expanded, id) {
@@ -96,7 +113,7 @@ fun SongMenu(remote: CiderRemote, expanded: Boolean, onDismiss: () -> Unit, type
 
     GlassMenu(expanded, onDismiss) {
         if (picking) {
-            PlaylistPicker(playlists, onBack = { picking = false }) { playlist ->
+            PlaylistPicker(playlists, onBack = { picking = false }, onNew = { onDismiss(); creating = true }) { playlist ->
                 run {
                     val ok = runCatching { remote.api.playlistAddTracks(playlist.id, listOf(type to id)) }.isSuccess
                     Toast.makeText(
@@ -202,12 +219,13 @@ fun MenuRow(icon: ImageVector, title: String, subtitle: String? = null, onClick:
 
 /** Lista de playlists editables de la biblioteca; sustituye al menú hasta elegir una. */
 @Composable
-private fun PlaylistPicker(playlists: List<LibraryPlaylist>?, onBack: () -> Unit, onPick: (LibraryPlaylist) -> Unit) {
+private fun PlaylistPicker(playlists: List<LibraryPlaylist>?, onBack: () -> Unit, onNew: () -> Unit, onPick: (LibraryPlaylist) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 16.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         CircleButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.action_back), onBack, size = 36.dp, background = Color.Transparent, border = null)
         Text(stringResource(R.string.action_add_to_playlist), style = Apple.type.headline.copy(fontWeight = FontWeight.SemiBold), color = Apple.colors.label)
     }
     HorizontalDivider(color = Apple.colors.separator)
+    MenuRow(Icons.Rounded.Add, stringResource(R.string.playlist_new), onClick = onNew)
     when {
         playlists == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Apple.colors.secondaryLabel, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
@@ -228,6 +246,31 @@ private fun PlaylistPicker(playlists: List<LibraryPlaylist>?, onBack: () -> Unit
             }
         }
     }
+}
+
+/** Pide el nombre de una playlist (crear o cambiar el nombre). Cider no deja borrarlas: crear es definitivo. */
+@Composable
+fun PlaylistNameDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    // Con el cursor al final y el teclado abierto, como el diálogo de iOS.
+    var field by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(initial, androidx.compose.ui.text.TextRange(initial.length))) }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val name = field.text
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                value = field, onValueChange = { field = it }, singleLine = true,
+                label = { Text(stringResource(R.string.playlist_name)) },
+                modifier = Modifier.focusRequester(focus),
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim()) }) { Text(confirm) }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
 }
 
 private fun share(context: Context, url: String) {

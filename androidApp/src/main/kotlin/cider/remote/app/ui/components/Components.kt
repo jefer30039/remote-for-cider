@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -68,6 +69,11 @@ fun ArtworkImage(
     preview: Int? = null,
 ) {
     Box(modifier.size(size).clip(shape).background(Apple.colors.fill)) {
+        // Sin carátula (playlist recién creada, vacía): una nota, como Apple Music.
+        if (artwork == null) Icon(
+            androidx.compose.material.icons.Icons.Filled.MusicNote, null, tint = Apple.colors.secondaryLabel,
+            modifier = Modifier.align(Alignment.Center).size(size * 0.4f),
+        )
         if (preview != null) AsyncImage(
             model = artwork?.sized(preview),
             contentDescription = null,
@@ -214,7 +220,9 @@ fun ThinSlider(
     val change by rememberUpdatedState(onValueChange)
     val finished by rememberUpdatedState(onValueChangeFinished)
     val thickness by animateDpAsState(if (dragging) 11.dp else 7.dp, label = "grosor")
-    BoxWithConstraints(
+    // Box normal (no BoxWithConstraints): los menús de vidrio miden el ancho de sus hijos con
+    // medidas intrínsecas, que un SubcomposeLayout no admite (cerraba la app al abrir el menú del equipo).
+    Box(
         modifier.fillMaxWidth().height(44.dp)
             .semantics {
                 contentDescription = description

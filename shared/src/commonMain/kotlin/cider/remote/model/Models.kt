@@ -256,7 +256,9 @@ data class AudioQuality(val flavor: String? = null, val flavorLabel: String? = n
             val f = flavor.orEmpty().lowercase()
             val l = flavorLabel.orEmpty()
             return when {
-                "atmos" in f || "atmos" in l.lowercase() -> "Dolby Atmos"
+                // `bin_64`/`bin_256`: Atmos en binaural (catálogo de eventos de Cider); Cider lo etiqueta
+                // "Lossless (256kbps variant)", así que se decide por el código y no por la etiqueta.
+                "atmos" in f || f.startsWith("bin") || "atmos" in l.lowercase() -> "Dolby Atmos"
                 "lossless" in l.lowercase() || "alac" in f -> if ("hi-res" in l.lowercase()) "Hi-Res Lossless" else "Lossless"
                 else -> null
             }

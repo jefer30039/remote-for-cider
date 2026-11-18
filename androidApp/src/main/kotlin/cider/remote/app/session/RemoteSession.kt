@@ -28,6 +28,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** Estado de la app: sin conexión guardada, o con un [CiderRemote] vivo. */
+/** Temporizador de apagado: a una hora ([endsAtMs], reloj de pared) o al acabar la canción actual. */
+data class SleepTimer(val endsAtMs: Long = 0L, val endOfTrack: Boolean = false)
+
 sealed interface SessionState {
     data object Loading : SessionState
     data object NotPaired : SessionState
@@ -134,6 +137,40 @@ class RemoteSession(
     }
 
     /** Buscar el PC ahora (menú ⋮). */
+    // --- Temporizador de apagado ---
+    private val _sleep = MutableStateFlow<SleepTimer?>(null)
+    /** Temporizador activo (null si no hay): pausa Cider al acabar el tiempo o la canción. */
+    val sleep: StateFlow<SleepTimer?> = _sleep.asStateFlow()
+    private var sleepJob: kotlinx.coroutines.Job? = null
+
+    /** [minutes] = 0 para "al acabar la canción"; null para quitarlo. */
+    fun setSleepTimer(minutes: Int?) {
+        sleepJob?.cancel()
+        if (minutes == null) { _sleep.value = null; return }
+        val timer = if (minutes > 0) SleepTimer(endsAtMs = System.currentTimeMillis() + minutes * 60_000L) else SleepTimer(endOfTrack = true)
+        _sleep.value = timer
+        sleepJob = scope.launch {
+            val remote = (state.value as? SessionState.Paired)?.remote
+            if (timer.endOfTrack) {
+                // Pausa justo antes del final (si se esperara al cambio de canción sonaría un instante la siguiente);
+                // si la canción cambia antes (siguiente a mano), pausa en ese momento.
+                val startId = remote?.state?.value?.track?.playParams?.id
+                while (true) {
+                    kotlinx.coroutines.delay(400)
+                    val r = (state.value as? SessionState.Paired)?.remote ?: continue
+                    val p = r.state.value
+                    val remaining = p.progress.durationSec - p.progress.positionNow()
+                    val changed = p.track?.playParams?.id != startId
+                    if ((p.isPlaying && p.progress.durationSec > 0 && remaining < 0.9) || changed) { r.pause(); break }
+                }
+            } else {
+                kotlinx.coroutines.delay((timer.endsAtMs - System.currentTimeMillis()).coerceAtLeast(0))
+                (state.value as? SessionState.Paired)?.remote?.pause()
+            }
+            _sleep.value = null
+        }
+    }
+
     fun searchNow() {
         val paired = state.value as? SessionState.Paired ?: return
         scope.launch { relocate(paired.connection) }

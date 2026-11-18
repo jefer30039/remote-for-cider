@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) AppleMusicLinks.from(intent)?.let { AppleMusicLinks.pending.value = it }
         // Teléfono: solo vertical. Tablet (≥ 600 dp, el mismo umbral que el diseño ancho): libre.
         requestedOrientation = if (resources.configuration.smallestScreenWidthDp >= 600) {
             ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -48,6 +49,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // Un enlace de Apple Music con la app ya abierta (launchMode singleTask).
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        AppleMusicLinks.from(intent)?.let { AppleMusicLinks.pending.value = it }
     }
 
     // Al entrar en la app se comprueba que el PC siga donde estaba; si no, se busca en la red.

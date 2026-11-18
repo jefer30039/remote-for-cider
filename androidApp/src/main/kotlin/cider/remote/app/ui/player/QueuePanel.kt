@@ -58,6 +58,12 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import androidx.compose.material.icons.filled.AllInclusive
+import androidx.compose.material.icons.filled.Merge
+import androidx.compose.ui.res.pluralStringResource
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 /** Cuántas siguientes se muestran: cada elemento de la cola pesa ~7 KB. */
 private const val WINDOW = 100
@@ -82,6 +88,15 @@ fun QueuePanel(remote: CiderRemote, state: PlayerState, modifier: Modifier = Mod
         reload()
         remote.signals.filter { it is RemoteSignal.QueueChanged }.collect { if (dragFrom < 0) reload() }
     }
+    // Reproducción automática (∞) y AutoMix, como la cabecera de la cola de iOS 26. Se leen al abrir la
+    // cola y se cambian al momento (si Cider falla, se vuelven a leer).
+    var autoplay by remember { mutableStateOf<Boolean?>(null) }
+    var automix by remember { mutableStateOf<Boolean?>(null) }
+    suspend fun loadModes() {
+        autoplay = runCatching { remote.api.autoplay() }.getOrNull()
+        automix = runCatching { remote.api.audioSetting("automix")["enabled"]?.jsonPrimitive?.content == "true" }.getOrNull()
+    }
+    LaunchedEffect(remote) { loadModes() }
 
     val listState = rememberLazyListState()
     val reorder = rememberReorderableLazyListState(listState) { from, to ->
@@ -102,6 +117,48 @@ fun QueuePanel(remote: CiderRemote, state: PlayerState, modifier: Modifier = Mod
                     stringResource(when (state.repeat) { RepeatMode.None -> R.string.repeat_off; RepeatMode.All -> R.string.repeat_all; RepeatMode.One -> R.string.repeat_one }),
                     state.repeat != RepeatMode.None,
                 ) { remote.cycleRepeat() }
+                autoplay?.let { on ->
+                    Toggle(Icons.Filled.AllInclusive, stringResource(R.string.action_autoplay), on) {
+                        autoplay = !on
+                        scope.launch { runCatching { remote.api.setAutoplay(!on) }.onFailure { loadModes() } }
+                    }
+                }
+                automix?.let { on ->
+                    Toggle(Icons.Filled.Merge, stringResource(R.string.action_automix), on) {
+                        automix = !on
+                        scope.launch {
+                            runCatching { remote.api.setAudioSetting("automix", buildJsonObject { put("enabled", !on) }) }.onFailure { loadModes() }
+                        }
+                    }
+                }
+            }
+        }
+        // Cuántas siguen y "Borrar" (vacía lo que viene después de la canción actual).
+        if (!rows.isNullOrEmpty()) item(key = "borrar") {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val count = rows?.size ?: 0
+                Text(
+                    if (count >= WINDOW) stringResource(R.string.song_count_more, count) else pluralStringResource(R.plurals.song_count, count, count),
+                    style = Apple.type.subhead, color = Color.White.copy(alpha = 0.62f), modifier = Modifier.weight(1f),
+                )
+                Text(
+                    stringResource(R.string.action_clear), style = Apple.type.subhead.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+                    color = Color.White,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                        .combinedClickableCompat(onClick = {
+                            rows = emptyList()
+                            scope.launch {
+                                runCatching { remote.clearUpNext() }; reload()
+                                // Con ∞ activado Cider rellena la cola con sugerencias a los pocos
+                                // segundos sin mandar ningún evento: se vuelve a leer un rato.
+                                for (wait in listOf(1500L, 2500L, 4000L)) { kotlinx.coroutines.delay(wait); if (dragFrom < 0) reload() }
+                            }
+                        })
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
             }
         }
         val list = rows
