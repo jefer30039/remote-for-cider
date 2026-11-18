@@ -261,9 +261,12 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         // En vertical usa la disposición del teléfono (carátula grande arriba, controles abajo y la letra o la
         // cola a todo el ancho): con la columna de horizontal sobraba media pantalla y todo quedaba apretado.
         val portrait = androidx.compose.ui.platform.LocalConfiguration.current.let { it.screenHeightDp > it.screenWidthDp }
-        if (wide && !portrait) TabletSheet(remote, state, mode, onMode, dismissDrag, cover?.square, sheet, root)
+        // Imagen fija del vídeo cuadrado: con ella se calibra el color del vídeo en la tablet (VideoColor).
+        val squareRef = cover?.squarePreview?.sized(480, 480)
+        if (wide && !portrait) TabletSheet(remote, state, mode, onMode, dismissDrag, cover?.square, sheet, root, squareRef)
         else PhoneSheet(
             remote, state, mode, onMode, background, dismissDrag, video, sheet, root, squareVideo = if (wide) cover?.square else null,
+            squareRef = if (wide) squareRef else null,
             videoPreview = if (video != null) cover?.heroPreview() else null, squareTop = squareTop,
             light = if (video != null) light else 0f,
         )
@@ -338,8 +341,9 @@ private fun PhoneSheet(
     video: String?,
     sheet: SheetState,
     root: SheetRoot,
-    /** Tablet en vertical: portada animada cuadrada dentro de la tarjeta. */
+    /** Tablet en vertical: portada animada cuadrada dentro de la tarjeta, y su imagen fija (calibración del color). */
     squareVideo: String? = null,
+    squareRef: String? = null,
     /** Fotograma fijo del vídeo (imagen de espera) y altura a la que cae en él la carátula fija (fracción del ancho). */
     videoPreview: String? = null,
     squareTop: Float? = null,
@@ -432,7 +436,7 @@ private fun PhoneSheet(
                                     val card = fly.inner.shadow(24.dp, cardShape, ambientColor = Color.Black, spotColor = Color.Black)
                                     if (squareVideo != null) {
                                         val sidePx = with(LocalDensity.current) { side.roundToPx() }
-                                        AnimatedCover(squareVideo, Modifier.size(side).then(card).clip(cardShape), maxVideoSize = IntSize(sidePx, sidePx)) {
+                                        AnimatedCover(squareVideo, Modifier.size(side).then(card).clip(cardShape), maxVideoSize = IntSize(sidePx, sidePx), reference = squareRef) {
                                             ArtworkImage(state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = cardShape)
                                         }
                                     } else ArtworkImage(state.track?.artwork, side, px = SheetArtworkPx, preview = PreviewArtworkPx, shape = cardShape, modifier = card)
@@ -512,7 +516,7 @@ private fun PhoneSheet(
 @Composable
 private fun TabletSheet(
     remote: CiderRemote, state: PlayerState, mode: SheetMode, onMode: (SheetMode) -> Unit, dismissDrag: Modifier, squareVideo: String?,
-    sheet: SheetState, root: SheetRoot,
+    sheet: SheetState, root: SheetRoot, squareRef: String? = null,
 ) {
     // Al abrir y cerrar la hoja la carátula vuela desde la miniatura del miniplayer y el resto se funde.
     val fade = Modifier.sheetFade(sheet)
@@ -548,6 +552,7 @@ private fun TabletSheet(
                         .shadow(24.dp, cardShape, ambientColor = Color.Black, spotColor = Color.Black)
                         .clip(cardShape),
                     maxVideoSize = androidx.compose.ui.unit.IntSize(artPx, artPx),
+                    reference = squareRef,
                 ) {
                     ArtworkImage(state.track?.artwork, art, px = WideSheetArtworkPx, preview = PreviewArtworkPx, shape = cardShape)
                 }

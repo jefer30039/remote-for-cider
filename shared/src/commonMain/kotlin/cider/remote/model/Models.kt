@@ -283,6 +283,8 @@ data class AnimatedCover(
     val tall: String?,
     val bgColor: String? = null,
     val tallPreview: Artwork? = null,
+    /** Fotograma fijo del vídeo cuadrado (su primer fotograma): referencia para calibrar el color en la tablet. */
+    val squarePreview: Artwork? = null,
     /** Id y número de canciones del álbum en el catálogo (para "Ver álbum completo" desde la biblioteca). */
     val catalogId: String? = null,
     val trackCount: Int? = null,

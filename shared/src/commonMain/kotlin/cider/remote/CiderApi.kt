@@ -234,6 +234,8 @@ class CiderApi(
             bgColor = attributes["artwork"]?.jsonObject?.get("bgColor")?.jsonPrimitive?.content,
             tallPreview = (tall?.get("previewFrame") as? kotlinx.serialization.json.JsonObject)
                 ?.get("url")?.jsonPrimitive?.content?.let { Artwork(url = it) },
+            squarePreview = (square?.get("previewFrame") as? kotlinx.serialization.json.JsonObject)
+                ?.get("url")?.jsonPrimitive?.content?.let { Artwork(url = it) },
             catalogId = item["id"]?.jsonPrimitive?.content,
             trackCount = attributes["trackCount"]?.jsonPrimitive?.content?.toIntOrNull(),
         )
