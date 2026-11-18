@@ -66,6 +66,85 @@ fun Color.asBackground(targetLuminance: Float = 0.022f, saturationBoost: Float =
     return c
 }
 
+private val bottomCache = ConcurrentHashMap<String, Color>()
+
+/**
+ * Color medio de la franja inferior de una imagen ([fraction] de su alto). Con portada animada es
+ * lo que queda reflejado bajo el título de la hoja de reproducción (fotograma fijo del vídeo).
+ * Null mientras se calcula (se mantiene el anterior).
+ */
+@Composable
+fun rememberBottomColor(url: String?, fraction: Float = 0.3f): Color? {
+    val context = LocalContext.current
+    val known = url?.let { bottomCache[it] }
+    val color by produceState(known, url) {
+        if (known != null || url == null) { value = known; return@produceState }
+        value = withContext(Dispatchers.Default) {
+            runCatching {
+                val request = ImageRequest.Builder(context).data(url).size(64).allowHardware(false).build()
+                val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult ?: return@runCatching null
+                val bmp = result.image.toBitmap()
+                val h = bmp.height; val w = bmp.width
+                val from = (h * (1f - fraction)).toInt().coerceIn(0, h - 1)
+                val px = IntArray(w * (h - from)); bmp.getPixels(px, 0, w, 0, from, w, h - from)
+                var r = 0L; var g = 0L; var b = 0L
+                for (c in px) { r += (c shr 16) and 0xFF; g += (c shr 8) and 0xFF; b += c and 0xFF }
+                Color((r / px.size).toInt(), (g / px.size).toInt(), (b / px.size).toInt())
+            }.getOrNull()
+        }?.also { bottomCache[url] = it }
+    }
+    return color
+}
+
+/**
+ * Colores de texto e iconos de la hoja de reproducción, sacados del fondo que tienen debajo
+ * (Apple Music en iOS 26, medido con "The Mirror" de Polo & Pan):
+ * - título: casi blanco con un punto del tono del fondo ((255, 253, 233): s 0,09);
+ * - artista y relleno de las barras: pastel del tono del fondo, algo más saturado (fondo h 32° s 0,75 →
+ *   artista s 0,22 v 0,98, relleno s 0,31 v 1);
+ * - tiempos e iconos: blanco **sumado** al fondo (`BlendMode.Plus`): Apple da fondo + 55 en los tiempos y
+ *   + 123 en los iconos, igual en los tres canales, así que conservan el tono de lo que hay detrás;
+ *   [time] e [icon] son ese blanco translúcido y hay que dibujarlos con suma ([plus]);
+ * - pista de las barras: el pastel translúcido.
+ * Con fondos grises sale blanco/gris, como antes.
+ */
+data class SheetTint(
+    val title: Color,
+    val secondary: Color,
+    val time: Color,
+    val fill: Color,
+    val track: Color,
+    val icon: Color,
+    /** Si [time] e [icon] van sumados al fondo (falso: blanco translúcido normal). */
+    val plus: Boolean = false,
+) {
+    companion object {
+        val Neutral = SheetTint(
+            title = Color.White,
+            secondary = Color.White.copy(alpha = 0.62f), time = Color.White.copy(alpha = 0.45f),
+            fill = Color.White.copy(alpha = 0.72f), track = Color.White.copy(alpha = 0.2f), icon = Color.White.copy(alpha = 0.62f),
+        )
+
+        fun from(under: Color): SheetTint {
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(under.toArgb(), hsv)
+            // "Algo más saturado": el fondo de la app sale algo menos vivo que el de Apple.
+            val s = (hsv[1] * 1.3f).coerceAtMost(1f)
+            fun c(sat: Float, v: Float, alpha: Float = 1f) =
+                Color(android.graphics.Color.HSVToColor(floatArrayOf(hsv[0], (s * sat).coerceAtMost(0.6f), v))).copy(alpha = alpha)
+            return SheetTint(
+                title = c(0.1f, 1f),
+                secondary = c(0.4f, 0.98f),
+                time = Color.White.copy(alpha = 0.22f),
+                fill = c(0.55f, 1f),
+                track = c(0.55f, 1f, alpha = 0.4f),
+                icon = Color.White.copy(alpha = 0.48f),
+                plus = true,
+            )
+        }
+    }
+}
+
 private val paletteCache = ConcurrentHashMap<String, List<Color>>()
 
 /**

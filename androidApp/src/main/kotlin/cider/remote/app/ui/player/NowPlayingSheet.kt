@@ -154,6 +154,7 @@ import cider.remote.app.ui.components.AnimatedCover
 import cider.remote.app.ui.components.LightStatusBarIcons
 import cider.remote.app.ui.components.asBackground
 import cider.remote.app.ui.components.rememberArtworkColor
+import cider.remote.app.ui.components.rememberBottomColor
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -167,6 +168,14 @@ private val Tertiary = Color.White.copy(alpha = 0.25f)
 private val Chip = Color.White.copy(alpha = 0.16f)
 
 enum class SheetMode { Artwork, Lyrics, Queue }
+
+/** Colores de texto e iconos teñidos con el fondo (ver [SheetTint]); los da [NowPlayingSheet]. */
+private val LocalSheetTint = androidx.compose.runtime.compositionLocalOf { cider.remote.app.ui.components.SheetTint.Neutral }
+
+/** Tiempos e iconos de la hoja: su blanco translúcido se suma al fondo (vibrancia de iOS) si el tinte lo pide. */
+@Composable
+private fun Modifier.plusBlend(): Modifier =
+    if (LocalSheetTint.current.plus) graphicsLayer { blendMode = androidx.compose.ui.graphics.BlendMode.Plus } else this
 
 private fun Color.lighter(f: Float) = Color((red * f).coerceAtMost(1f), (green * f).coerceAtMost(1f), (blue * f).coerceAtMost(1f), alpha)
 
@@ -183,7 +192,8 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
     // Color de fondo: el dominante de la paleta calibrada con la app oficial (brillo × 0,7); hasta que
     // se calcula, el de `bgColor` oscurecido.
     val palette = rememberArtworkPalette(state.track?.artwork)
-    val background by animateColorAsState(palette?.firstOrNull() ?: sheetBackground(rememberArtworkColor(state.track?.artwork)), tween(700), label = "fondo")
+    val target = palette?.firstOrNull() ?: sheetBackground(rememberArtworkColor(state.track?.artwork))
+    val background by animateColorAsState(target, tween(700), label = "fondo")
 
     // Derivados: la posición de la hoja cambia en cada fotograma del gesto y leerla aquí recomponía la hoja entera.
     val open by remember(sheet) { derivedStateOf { sheet.isOpen } }
@@ -209,6 +219,14 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         value = AnimatedCovers.load(remote, catalogId)
     }
     val video = if (wide) null else cover?.tall
+    // Tinte de textos e iconos: del fondo que tienen debajo. Con portada animada es la parte baja del vídeo
+    // reflejada (su fotograma fijo); si no, el color de fondo de la hoja.
+    val under = rememberBottomColor(if (video != null) cover?.heroPreview() ?: state.track?.artwork?.sized(PreviewArtworkPx) else null)
+    // Luminancia de la franja baja del vídeo: desde 0,5 se oscurece bajo los controles (ver HeroArtwork).
+    val light = under?.let { ((it.luminance() - 0.5f) / 0.3f).coerceIn(0f, 1f) } ?: 0f
+    val tint = remember(under, target, video != null) {
+        cider.remote.app.ui.components.SheetTint.from(if (video != null) under ?: target else target)
+    }
     // Con portada animada: dónde cae la carátula fija dentro del vídeo (de ahí sale la pieza al abrir la hoja).
     val context = LocalContext.current
     val squareTop by produceState(AnimatedCovers.peekSquareTop(cover), state.track?.artwork?.url, cover) {
@@ -221,7 +239,7 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
     // página de debajo. Dentro de la hoja ninguna pieza lee este fondo (se dibujaría dentro de sí misma);
     // solo los menús emergentes, que viven en otra ventana.
     val sheetGlass = cider.remote.app.ui.components.rememberGlassBackdrop()
-    androidx.compose.runtime.CompositionLocalProvider(cider.remote.app.ui.components.LocalGlassBackdrop provides sheetGlass) {
+    androidx.compose.runtime.CompositionLocalProvider(cider.remote.app.ui.components.LocalGlassBackdrop provides sheetGlass, LocalSheetTint provides tint) {
     Box(
         Modifier.fillMaxSize()
             .graphicsLayer { translationY = sheet.offsetPx }
@@ -247,6 +265,7 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
         else PhoneSheet(
             remote, state, mode, onMode, background, dismissDrag, video, sheet, root, squareVideo = if (wide) cover?.square else null,
             videoPreview = if (video != null) cover?.heroPreview() else null, squareTop = squareTop,
+            light = if (video != null) light else 0f,
         )
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
@@ -324,6 +343,8 @@ private fun PhoneSheet(
     /** Fotograma fijo del vídeo (imagen de espera) y altura a la que cae en él la carátula fija (fracción del ancho). */
     videoPreview: String? = null,
     squareTop: Float? = null,
+    /** Lo clara que es la parte baja del vídeo (0–1): oscurece más bajo los controles. */
+    light: Float = 0f,
 ) {
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val fade = Modifier.sheetFade(sheet)
@@ -361,6 +382,7 @@ private fun PhoneSheet(
             HeroArtwork(
                 state.track?.artwork, video, videoPreview, width * 4 / 3, dismissDrag,
                 rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp, videoAspect = 4f / 3f, squareTop = squareTop),
+                light = light,
             )
         }
         Column(Modifier.fillMaxSize()) {
@@ -417,7 +439,8 @@ private fun PhoneSheet(
                                 }
                             }
                         }
-                        Box(Modifier.padding(start = edge, end = edge - 11.dp).then(fade)) { TitleRow(remote, state) }
+                        // Medido contra Apple Music (iOS 26): botones 3,5 dp más adentro y el título 1,5 dp más arriba.
+                        Box(Modifier.padding(start = edge, end = edge - 7.5.dp).offset(y = (-1.5).dp).then(fade)) { TitleRow(remote, state) }
                     }
                     }
                     SheetMode.Lyrics, SheetMode.Queue -> Box(Modifier.fillMaxSize()) {
@@ -466,7 +489,9 @@ private fun PhoneSheet(
                 Column(Modifier.padding(horizontal = edge).then(fade)) {
                     Spacer(Modifier.height(8.dp))
                     Progress(remote, state)
-                    Spacer(Modifier.height(10.dp))
+                    // Medido contra Apple Music (iOS 26, "The Mirror"): barra a 21 dp de los tiempos y 94 dp sobre el
+                    // centro de los controles; con 10 dp quedaban 7,6 dp más abajo (y los tiempos, 16).
+                    Spacer(Modifier.height(26.dp))
                     Transport(remote, state)
                     Spacer(Modifier.height(25.dp))
                     VolumeRow(remote, state)
@@ -578,10 +603,11 @@ private val CompactHeaderHeight = 120.dp
  * (en arco, ver [BlurArcCenter]) y un velo oscuro crece desde el borde del vídeo hasta ~0,37 abajo (Apple no oscurece el vídeo).
  */
 @Composable
-private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, height: Dp, dragModifier: Modifier, fly: SheetFly) {
+private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, height: Dp, dragModifier: Modifier, fly: SheetFly, light: Float = 0f) {
     val videoLayer = rememberGraphicsLayer()
     val near = rememberGraphicsLayer()
     val far = rememberGraphicsLayer()
+    val bottom = rememberGraphicsLayer()
     Box(Modifier.fillMaxSize().then(fly.outer)) {
     Box(Modifier.fillMaxSize().then(fly.inner)) {
         Spacer(
@@ -597,6 +623,10 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
                     return BlurEffect(radius, radius, TileMode.Clamp)
                 }
                 val nearBlur = blur(MirrorNearSigma)
+                val bottomMask = Brush.verticalGradient(
+                    *fadeStops(0f, 1f, from = 0f, to = 1f, steps = 24),
+                    startY = vh * 1.35f * k, endY = h * k,
+                )
                 val farBlur = blur(MirrorFarSigma)
                 // La suave se va en arco, con el mismo centro que el fundido del vídeo: en el eje, del 85 %
                 // al 120 % del alto del vídeo.
@@ -621,6 +651,8 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
                 onDrawBehind {
                     if (vh >= h || w <= 0f) return@onDrawBehind
                     far.renderEffect = farBlur
+                    far.colorFilter = MirrorColor
+                    near.colorFilter = MirrorColor
                     far.record(small) { reflected() }
                     // La capa suave solo se ve junto al vídeo: se recorta antes de desenfocarla.
                     near.renderEffect = nearBlur
@@ -634,6 +666,19 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
                     // pantalla completa es lo que más cuesta).
                     clipRect(top = vh * 0.6f) {
                         scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(far) }
+                    }
+                    // Abajo del todo el desenfoque ancho mezcla todos los colores y quedaba gris: encima, la misma
+                    // capa saturada, fundida desde la altura del volumen hasta el borde.
+                    if (h > vh * 1.35f) {
+                        bottom.colorFilter = FarSaturation
+                        bottom.compositingStrategy = androidx.compose.ui.graphics.layer.CompositingStrategy.Offscreen
+                        bottom.record(small) {
+                            drawLayer(far)
+                            drawRect(bottomMask, blendMode = BlendMode.DstIn)
+                        }
+                        clipRect(top = vh * 1.35f) {
+                            scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(bottom) }
+                        }
                     }
                     clipRect(top = vh * 0.6f, bottom = vh * 1.2f) {
                         scale(1f / k, 1f / k, pivot = Offset.Zero) { drawLayer(near) }
@@ -660,7 +705,7 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
                     }
                 },
         ) {
-            AnimatedCover(video, Modifier.fillMaxSize()) {
+            AnimatedCover(video, Modifier.fillMaxSize(), reference = preview) {
                 AsyncImage(
                     model = artwork?.sized(PreviewArtworkPx),
                     contentDescription = null,
@@ -681,11 +726,23 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
         }
         // Velo oscuro del borde del vídeo hacia abajo, casi lineal (tramo central de la curva): ~0,18 a media
         // altura de lo que queda y ~0,37 en el borde de la pantalla.
+        // Con la parte baja del vídeo clara (nubes blancas de "DI MI NOMBRE": luminancia 0,92) el título, los
+        // botones y los tiempos blancos no se leían: un velo más, desde el 60 % del vídeo, que a la altura del
+        // título llega a 0,45 y abajo a 0,6, proporcional a [light] (0 hasta luminancia 0,5, 1 desde 0,8).
         Spacer(
             Modifier.fillMaxSize().drawWithCache {
                 val vh = height.toPx() / size.height
                 val veil = fade(vh * 0.85f, 1.2f, from = 0f, to = 0.48f, steps = 24)
-                onDrawBehind { if (vh < 1f) drawRect(veil) }
+                val extra = if (light > 0f) Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    vh * 0.6f to Color.Transparent,
+                    vh * 0.9f to Color.Black.copy(alpha = 0.45f * light),
+                    1f to Color.Black.copy(alpha = 0.6f * light),
+                ) else null
+                onDrawBehind {
+                    if (vh < 1f) drawRect(veil)
+                    extra?.let { drawRect(it) }
+                }
             },
         )
         // Al salir del miniplayer (y al volver a él) la pieza es su miniatura: la carátula fija tapa el
@@ -708,6 +765,27 @@ private const val MirrorScale = 0.25f
 private const val MirrorStretch = 1.8f
 private const val MirrorNearSigma = 0.035f
 private const val MirrorFarSigma = 0.22f
+
+/**
+ * El desenfoque ancho mezcla todos los colores de la parte baja del vídeo y abajo del todo salía
+ * gris pardo (saturación 0,25 con "The Mirror"); Apple conserva el tono (≈ 0,57 descontando el
+ * retoque de color de su imagen). Esa franja se satura ×1,6 más (encima del ×1,3 de [MirrorColor]);
+ * saturada entera ×2, el centro salía naranja vivo y los tiempos se perdían.
+ */
+private val FarSaturation = androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(1.6f) })
+
+/**
+ * El reflejo de Apple es más vivo y oscuro que el vídeo (con el color del vídeo ya corregido, ver
+ * `VideoColor`): saturación × 1,3 y brillo × 0,82 llevan el fondo bajo el título de (189, 128, 69) a
+ * (168, 103, 40) frente a (165, 102, 33) de iOS, y el de entre el progreso y los controles a
+ * (155, 104, 53) frente a (148, 100, 47) ("The Mirror").
+ */
+private val MirrorColor = androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+    androidx.compose.ui.graphics.ColorMatrix().apply {
+        setToSaturation(1.3f)
+        for (row in 0..2) for (col in 0..4) this[row, col] = this[row, col] * 0.82f
+    },
+)
 
 /**
  * El desenfoque no empieza en una línea recta sino en un arco de círculo, más arriba en los lados
@@ -763,7 +841,7 @@ private fun CompactHeader(
         }
         Column(Modifier.weight(1f).padding(horizontal = 14.dp).then(fade)) {
             TitleText(state, Apple.type.headline.copy(fontSize = 18.sp), Modifier.combinedClickableCompat(onClick = toAlbum))
-            Text(track?.artistName.orEmpty(), style = Apple.type.body, color = Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            Text(track?.artistName.orEmpty(), style = Apple.type.body, color = LocalSheetTint.current.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.combinedClickableCompat(onClick = toArtist))
         }
         Box(fade) { MoreMenu(remote, state) }
@@ -793,7 +871,7 @@ private fun TitleText(state: PlayerState, style: androidx.compose.ui.text.TextSt
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(
             track?.name ?: stringResource(R.string.status_not_playing), style = style,
-            color = Primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+            color = LocalSheetTint.current.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
         )
         if (track?.isExplicit == true) {
             val description = stringResource(R.string.explicit)
@@ -814,12 +892,24 @@ private fun TitleRow(remote: CiderRemote, state: PlayerState, compact: Boolean =
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             val size = if (compact) 17.sp else 22.sp
-            TitleText(state, Apple.type.title2.copy(fontSize = size, lineHeight = size * 1.2f, fontWeight = FontWeight.SemiBold), Modifier.combinedClickableCompat(onClick = toAlbum))
+            // iOS 26: 24 dp entre las líneas de título y artista; aquí 26,4, y bajar el interlineado no mueve nada
+            // (la fila mide lo que los botones de 44 dp), así que el artista se sube 2,2 dp.
+            val line = size * 1.2f
+            TitleText(state, Apple.type.title2.copy(fontSize = size, lineHeight = line, fontWeight = FontWeight.SemiBold), Modifier.combinedClickableCompat(onClick = toAlbum))
             Text(
-                state.track?.artistName.orEmpty(), style = Apple.type.title3.copy(fontSize = size, lineHeight = size * 1.2f, fontWeight = FontWeight.Normal),
-                color = Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.combinedClickableCompat(onClick = toArtist),
+                state.track?.artistName.orEmpty(), style = Apple.type.title3.copy(fontSize = size, lineHeight = line, fontWeight = FontWeight.Normal),
+                color = LocalSheetTint.current.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.then(if (compact) Modifier else Modifier.offset(y = (-2.2).dp)).combinedClickableCompat(onClick = toArtist),
             )
+        }
+        // Favorita junto al "…" (iOS 26): centros a 46 dp.
+        if (state.track != null) {
+            val loved = state.inFavorites == true
+            GlassCircle(
+                if (loved) Icons.Filled.Star else Icons.Filled.StarBorder,
+                stringResource(if (loved) R.string.action_unfavorite else R.string.action_favorite),
+            ) { remote.toggleLove() }
+            Spacer(Modifier.width(2.dp))
         }
         MoreMenu(remote, state)
     }
@@ -853,7 +943,7 @@ private fun MoreMenu(remote: CiderRemote, state: PlayerState) {
     }
 }
 
-/** Círculo translúcido de 30 dp (Apple Music) con área táctil de 44 dp. */
+/** Círculo translúcido de 31 dp con glifo de 23 dp (iOS 26: estrella de 18 dp, "…" de 16) y área táctil de 44 dp. */
 @Composable
 private fun GlassCircle(icon: ImageVector, description: String, tint: Color = Primary, onClick: () -> Unit) {
     Box(
@@ -861,8 +951,8 @@ private fun GlassCircle(icon: ImageVector, description: String, tint: Color = Pr
             .semantics { contentDescription = description; role = Role.Button },
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(30.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(17.dp))
+        Box(Modifier.size(31.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(23.dp))
         }
     }
 }
@@ -889,16 +979,22 @@ private fun Progress(remote: CiderRemote, state: PlayerState) {
         value = dragging ?: (position / duration).toFloat(),
         onValueChange = { dragging = it },
         onValueChangeFinished = { dragging?.let { remote.seek(it * duration) }; dragging = null },
-        activeColor = Color.White.copy(alpha = 0.72f),
-        inactiveColor = Color.White.copy(alpha = 0.2f),
+        activeColor = LocalSheetTint.current.fill,
+        inactiveColor = LocalSheetTint.current.track,
         description = stringResource(R.string.playback_position, formatTime(shown), formatTime(duration)),
     )
-    Box(Modifier.fillMaxWidth()) {
+    // Tiempos 8,5 dp más pegados a la barra (Apple: 21 dp entre centros): la caja se sube y ocupa eso menos.
+    val TimeColor = LocalSheetTint.current.time
+    val Secondary = LocalSheetTint.current.icon
+    Box(Modifier.fillMaxWidth().layout { m, c ->
+        val p = m.measure(c); val up = 8.5.dp.roundToPx()
+        layout(p.width, (p.height - up).coerceAtLeast(0)) { p.place(0, -up) }
+    }) {
         val timeStyle = Apple.type.caption.copy(fontWeight = FontWeight.SemiBold).tabular()
-        Text(formatTime(shown), style = timeStyle, color = TimeColor, modifier = Modifier.align(Alignment.CenterStart))
+        Text(formatTime(shown), style = timeStyle, color = TimeColor, modifier = Modifier.align(Alignment.CenterStart).plusBlend())
         quality?.badge?.let { badge ->
             Row(
-                Modifier.align(Alignment.Center).clip(RoundedCornerShape(5.dp)).background(Chip)
+                Modifier.align(Alignment.Center).plusBlend().clip(RoundedCornerShape(5.dp)).background(Chip)
                     .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -906,7 +1002,7 @@ private fun Progress(remote: CiderRemote, state: PlayerState) {
                 Text(badge, style = Apple.type.caption.copy(fontWeight = FontWeight.SemiBold), color = Secondary, modifier = Modifier.padding(start = 4.dp))
             }
         }
-        Text("-" + formatTime(duration - shown), style = timeStyle, color = TimeColor, modifier = Modifier.align(Alignment.CenterEnd))
+        Text("-" + formatTime(duration - shown), style = timeStyle, color = TimeColor, modifier = Modifier.align(Alignment.CenterEnd).plusBlend())
     }
 }
 
@@ -932,12 +1028,12 @@ private fun Transport(remote: CiderRemote, state: PlayerState, compact: Boolean 
     // iPhone: centros separados 107 pt; anterior/siguiente de 44 pt de ancho, pausa de 44 de alto.
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(27.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GlyphButton(AppleIcons.Backward, stringResource(R.string.action_previous), 46.dp, onClick = remote::previous)
+        GlyphButton(AppleIcons.Backward, stringResource(R.string.action_previous), 46.dp, squash = SkipSquash, onClick = remote::previous)
         PlayPause(remote, state, 46.dp)
-        GlyphButton(AppleIcons.Forward, stringResource(R.string.action_next), 46.dp, onClick = remote::next)
+        GlyphButton(AppleIcons.Forward, stringResource(R.string.action_next), 46.dp, squash = SkipSquash, onClick = remote::next)
     }
 }
 
@@ -947,31 +1043,37 @@ private fun PlayPause(remote: CiderRemote, state: PlayerState, size: Dp, touch: 
     stringResource(if (state.isPlaying) R.string.action_pause else R.string.action_play), size, touch, onClick = remote::togglePlay,
 )
 
+/** Anterior/siguiente de iOS 26: el glifo, a 46 dp, sale 42 × 29 dp; Apple lo dibuja 38 × 22. */
+private val SkipSquash = Offset(0.91f, 0.76f)
+
 @Composable
-private fun GlyphButton(icon: ImageVector, description: String, size: Dp, touch: Dp = 80.dp, tint: Color = Primary, onClick: () -> Unit) {
+private fun GlyphButton(icon: ImageVector, description: String, size: Dp, touch: Dp = 80.dp, tint: Color = Primary, squash: Offset? = null, onClick: () -> Unit) {
     Box(
         Modifier.size(touch).clip(CircleShape).combinedClickableCompat(onClick = onClick)
             .semantics { contentDescription = description; role = Role.Button },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(size))
+        Icon(icon, null, tint = tint, modifier = Modifier.size(size).then(if (squash != null) Modifier.graphicsLayer { scaleX = squash.x; scaleY = squash.y } else Modifier))
     }
 }
 
 /** Volumen de Cider, como la barra de volumen de Apple Music en iPhone. */
 @Composable
 private fun VolumeRow(remote: CiderRemote, state: PlayerState) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.AutoMirrored.Rounded.VolumeMute, null, tint = Secondary, modifier = Modifier.size(20.dp))
+    // Medido contra Apple Music (iOS 26): altavoz pequeño 4 dp más afuera, barra desde 24 dp del borde
+    // del margen, altavoz grande algo menor y toda la fila 2,7 dp más abajo.
+    val tint = LocalSheetTint.current
+    Row(Modifier.fillMaxWidth().offset(y = 2.7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.AutoMirrored.Rounded.VolumeMute, null, tint = tint.icon, modifier = Modifier.size(20.dp).offset(x = (-3.7).dp).plusBlend())
         ThinSlider(
             value = state.volume.toFloat(),
             onValueChange = { remote.setVolume(it.toDouble()) },
-            activeColor = Color.White.copy(alpha = 0.72f),
-            inactiveColor = Color.White.copy(alpha = 0.2f),
+            activeColor = tint.fill,
+            inactiveColor = tint.track,
             description = stringResource(R.string.volume_description, (state.volume * 100).roundToInt()),
-            modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+            modifier = Modifier.weight(1f).padding(start = 4.dp, end = 13.dp),
         )
-        Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Secondary, modifier = Modifier.size(22.dp))
+        Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = tint.icon, modifier = Modifier.size(19.dp).plusBlend())
     }
 }
 
@@ -1045,7 +1147,8 @@ private fun SpeakerBassRow(remote: CiderRemote, visible: Boolean) {
 /** Abajo (iPhone): letra · dispositivo · cola, con los centros separados 118 pt. */
 @Composable
 private fun BottomBar(remote: CiderRemote, state: PlayerState, mode: SheetMode, onMode: (SheetMode) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(70.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+    // Centros a 111 dp (iOS 26; antes 118).
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(63.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
         ModeButton(AppleIcons.Lyrics, stringResource(R.string.action_lyrics), mode == SheetMode.Lyrics) {
             onMode(if (mode == SheetMode.Lyrics) SheetMode.Artwork else SheetMode.Lyrics)
         }
@@ -1102,7 +1205,8 @@ private fun ModeButton(icon: ImageVector, description: String, selected: Boolean
                 .background(if (selected) Color.White.copy(alpha = 0.85f) else Color.Transparent),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = if (selected) Color.Black.copy(alpha = 0.7f) else Secondary, modifier = Modifier.size(24.dp))
+            Icon(icon, null, tint = if (selected) Color.Black.copy(alpha = 0.7f) else LocalSheetTint.current.icon,
+                modifier = Modifier.size(24.dp).then(if (selected) Modifier else Modifier.plusBlend()))
         }
     }
 }
