@@ -228,11 +228,17 @@ fun AnimatedCover(
     pool: CoverPlayerPool? = null,
     /** El `previewFrame` del vídeo (su primer fotograma, mismo encuadre): sirve para calibrar el color ([VideoColor]). */
     reference: String? = null,
+    /**
+     * La imagen de espera es el `previewFrame` del vídeo: se le descuenta lo que sale más clara que el
+     * fotograma decodificado ([VideoColor.placeholder]). Con otra imagen (carátula, ilustración editorial),
+     * false: el descuento la oscurecería.
+     */
+    placeholderIsPreview: Boolean = true,
     placeholder: @Composable () -> Unit,
 ) {
     Box(modifier) {
         // La imagen de espera con el mismo aspecto que tendrá el vídeo (iOS).
-        if (url != null) Box(Modifier.fillMaxSize().graphicsLayer(colorFilter = VideoColor.placeholder)) { placeholder() } else placeholder()
+        if (url != null && placeholderIsPreview) Box(Modifier.fillMaxSize().graphicsLayer(colorFilter = VideoColor.placeholder)) { placeholder() } else placeholder()
         if (url == null) return@Box
         val settled by LocalPageSettled.current
         var wanted by remember(url) { mutableStateOf(playing && settled) }

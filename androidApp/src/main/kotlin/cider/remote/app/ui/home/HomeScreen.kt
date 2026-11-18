@@ -258,7 +258,7 @@ private fun HeroCard(item: HomeItem, playing: Boolean, players: CoverPlayerPool?
             .combinedClickableCompat(onClick = onClick),
     ) {
         if (tall != null) AnimatedCover(
-            item.tallVideo, Modifier.fillMaxSize(), playing = playing, pool = players,
+            item.tallVideo, Modifier.fillMaxSize(), playing = playing, pool = players, placeholderIsPreview = false,
             maxVideoSize = with(density) { IntSize(HeroWidth.roundToPx(), (HeroWidth * 4 / 3).roundToPx()) },
         ) {
             AsyncImage(

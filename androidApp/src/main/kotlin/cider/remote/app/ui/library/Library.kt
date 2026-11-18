@@ -669,7 +669,15 @@ private fun WideCollectionHeader(
             AnimatedCover(
                 squareVideo,
                 Modifier.size(300.dp).shadow(18.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)),
-            ) { ArtworkImage(route.artwork, 300.dp, px = 800, shape = RoundedCornerShape(8.dp)) }
+                placeholderIsPreview = info?.squarePreview != null,
+            ) {
+                // Espera: el fotograma de muestra del vídeo cuadrado; sin él, la carátula fija.
+                val preview = info?.squarePreview
+                if (preview != null) AsyncImage(
+                    model = preview.sized(800, 800), contentDescription = null,
+                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                ) else ArtworkImage(route.artwork, 300.dp, px = 800, shape = RoundedCornerShape(8.dp))
+            }
             Column(Modifier.weight(1f).padding(start = 32.dp)) {
                 Text(RenamedPlaylists[route.id] ?: route.title, style = Apple.type.title1, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (!route.subtitle.isNullOrBlank()) Text(
@@ -858,9 +866,12 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                     if (tall != null) {
                         // Portada animada vertical (3:4) a todo el ancho; el título se apoya en el degradado.
                         Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).dissolveOnScroll(headerScroll, threshold = 170.dp, fadeLength = 450.dp)) {
-                            AnimatedCover(tall, Modifier.fillMaxSize()) {
+                            // Espera: el fotograma de muestra del vídeo (mismo encuadre y color que su primer
+                            // fotograma, como en la hoja); sin él, la carátula fija.
+                            val tallPreview = cover?.tallPreview
+                            AnimatedCover(tall, Modifier.fillMaxSize(), placeholderIsPreview = tallPreview != null) {
                                 AsyncImage(
-                                    model = route.artwork?.sized(1200), contentDescription = null,
+                                    model = tallPreview?.sized(1200, 1600) ?: route.artwork?.sized(1200), contentDescription = null,
                                     contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                                 )
                             }
