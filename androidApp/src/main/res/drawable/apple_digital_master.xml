@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de Apple Digital Master, redibujado a trazo a partir de una captura de Apple Music para iOS
+     (pie de la página de álbum). Se tiñe con el color del texto. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12.45dp"
+    android:height="11.58dp"
+    android:viewportWidth="12.45"
+    android:viewportHeight="11.58">
+    <group android:translateX="-1.475" android:translateY="-1.71">
+        <path
+            android:pathData="M5.30,7.75 L3.33,6.17 Q2.00,5.11 2.00,6.81 L2.00,11.26 Q2.00,13.56 3.55,11.86 L11.58,3.08 Q13.40,1.09 13.40,3.79 L13.40,11.43 Q13.40,13.53 11.69,12.32 L8.00,9.70"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.05"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

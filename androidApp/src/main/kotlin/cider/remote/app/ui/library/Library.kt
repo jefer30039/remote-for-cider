@@ -46,6 +46,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import cider.remote.albumExtras
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -301,6 +303,9 @@ fun Loading() {
  * refresca detrás.
  */
 private val recentTracks = android.util.LruCache<String, List<TrackRow>>(24)
+
+/** Pie y estanterías de los álbumes recientes (por id de catálogo), para no esperar al volver a uno. */
+private val recentExtras = android.util.LruCache<String, cider.remote.AlbumExtras>(24)
 
 /** Celda de cuadrícula: carátula y textos debajo. Esquinas de 6 dp, como Apple Music. */
 @Composable
@@ -787,6 +792,43 @@ private fun updatedLabel(iso: String): String? {
 
 private fun Color.darker(f: Float) = Color(red * f, green * f, blue * f, alpha)
 
+/** Fondo de las estanterías bajo el pie del álbum: 10/255 más oscuro por canal (Apple Music, CAPRISONGS). */
+private fun Color.lowered() = Color((red - 10f / 255f).coerceAtLeast(0f), (green - 10f / 255f).coerceAtLeast(0f), (blue - 10f / 255f).coerceAtLeast(0f), alpha)
+
+/**
+ * Pie de un álbum, como Apple Music para iOS: "Apple Digital Master" con su icono (si Apple lo marca),
+ * fecha de lanzamiento larga, canciones y minutos, y el copyright, en el gris de la página. Medidas de
+ * una captura de iPhone (CAPRISONGS): 15 pt, renglones de 18 (20 el copyright), 13 entre el sello y la
+ * fecha y ~20 por debajo, donde empieza el fondo de las estanterías.
+ */
+@Composable
+private fun AlbumFooter(extras: cider.remote.AlbumExtras?, songs: String, color: Color, modifier: Modifier = Modifier) {
+    val tight = Apple.type.subhead.copy(lineHeight = 18.sp)
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val date = extras?.releaseDate?.let { raw ->
+        runCatching {
+            java.time.LocalDate.parse(raw).format(
+                java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG).withLocale(locale),
+            )
+        }.getOrNull()
+    }
+    Column(modifier.fillMaxWidth().padding(start = Margin, end = Margin, top = 24.dp, bottom = 20.5.dp)) {
+        if (extras?.digitalMaster == true) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painterResource(R.drawable.apple_digital_master), null, tint = color,
+                    modifier = Modifier.size(12.45.dp, 11.58.dp),
+                )
+                Text("Apple Digital Master", style = Apple.type.subhead, color = color, modifier = Modifier.padding(start = 7.dp))
+            }
+            Spacer(Modifier.height(13.dp))
+        }
+        date?.let { Text(it, style = tight, color = color) }
+        Text(songs, style = tight, color = color)
+        extras?.copyright?.let { Text(it, style = Apple.type.subhead, color = color) }
+    }
+}
+
 @Composable
 fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPadding: PaddingValues) {
     val scope = rememberCoroutineScope()
@@ -810,6 +852,16 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
     val catalogPlaylist = if (!route.isPlaylist) null else if (route.kind == "playlists") route.id else cover?.catalogId
     val trackTraits by produceState(emptyList<String>(), catalogPlaylist) {
         value = catalogPlaylist?.let { runCatching { remote.api.playlistAudioTraits(it) }.getOrNull() }.orEmpty()
+    }
+    // Álbumes: pie (Apple Digital Master, fecha, copyright) y estanterías de debajo, del álbum de catálogo.
+    val catalogAlbum = when {
+        route.isPlaylist -> null
+        route.kind == "albums" -> route.id
+        else -> cover?.catalogId
+    }
+    val extras by produceState(catalogAlbum?.let { recentExtras.get(it) }, catalogAlbum) {
+        val id = catalogAlbum ?: return@produceState
+        runCatching { remote.api.albumExtras(id) }.getOrNull()?.let { recentExtras.put(id, it); value = it }
     }
     // Color oficial de Apple (catálogo) si lo hay; si no, el color medio de la carátula.
     val official = cover?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() }
@@ -968,33 +1020,56 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
             }
             if (!list.isNullOrEmpty()) fullWidth {
                 val minutes = (list.sumOf { it.durationMs ?: 0L } / 60_000).toInt()
-                Text(
-                    stringResource(
-                        R.string.collection_footer,
-                        pluralStringResource(R.plurals.song_count, list.size, list.size),
-                        pluralStringResource(R.plurals.minute_count, minutes, minutes),
-                    ),
-                    style = Apple.type.body, color = secondary,
-                    modifier = Modifier.offset(y = listOverlap).padding(start = Margin, top = 24.dp),
+                val songs = stringResource(
+                    R.string.collection_footer,
+                    pluralStringResource(R.plurals.song_count, list.size, list.size),
+                    pluralStringResource(R.plurals.minute_count, minutes, minutes),
                 )
+                if (route.isPlaylist) Text(
+                    songs, style = Apple.type.body, color = secondary,
+                    modifier = Modifier.offset(y = listOverlap).padding(start = Margin, top = 24.dp),
+                ) else AlbumFooter(extras, songs, secondary, Modifier.offset(y = listOverlap))
             }
             // Álbum de la biblioteca con solo parte de sus canciones: "Ver álbum completo" abre el del catálogo
             // (Apple Music, debajo del pie).
-            val catalogAlbum = cover?.catalogId?.takeIf {
+            val completeAlbum = cover?.catalogId?.takeIf {
                 route.kind == "library-albums" && !list.isNullOrEmpty() && (cover?.trackCount ?: Int.MAX_VALUE) > list.size
             }
-            if (catalogAlbum != null) fullWidth {
+            if (completeAlbum != null) fullWidth {
                 Column(Modifier.offset(y = listOverlap).padding(top = 20.dp)) {
                     Box(Modifier.padding(horizontal = Margin).fillMaxWidth().height(0.5.dp).background(Color.White.copy(alpha = 0.14f)))
                     Text(
                         stringResource(R.string.action_show_complete_album), style = Apple.type.body, color = Color.White,
                         modifier = Modifier.fillMaxWidth()
                             .combinedClickableCompat(onClick = {
-                                openRoute(Route.Collection("albums", catalogAlbum, route.title, route.subtitle, route.artwork))
+                                openRoute(Route.Collection("albums", completeAlbum, route.title, route.subtitle, route.artwork))
                             })
                             .padding(horizontal = Margin, vertical = 14.dp),
                     )
                     Box(Modifier.padding(horizontal = Margin).fillMaxWidth().height(0.5.dp).background(Color.White.copy(alpha = 0.14f)))
+                }
+            }
+            // Estanterías del álbum (Apple Music para iOS): sobre un fondo algo más oscuro que la página
+            // (medido: 10/255 menos por canal), que la última alarga hasta abajo del todo.
+            val shelves = extras?.shelves.orEmpty().takeIf { !list.isNullOrEmpty() }.orEmpty()
+            items(shelves.size) { i ->
+                val shelf = shelves[i]
+                val last = i == shelves.lastIndex
+                Box(
+                    Modifier.offset(y = listOverlap).drawBehind {
+                        val c = bgShown.value.lowered()
+                        if (last) drawRect(c, size = androidx.compose.ui.geometry.Size(size.width, size.height + 4000f)) else drawRect(c)
+                    },
+                ) {
+                    cider.remote.app.ui.ForceDark(bg.lowered()) {
+                        Column {
+                            if (i == 0) Spacer(Modifier.height(6.5.dp))
+                            cider.remote.app.ui.home.Shelf(
+                                remote, shelf, openRoute,
+                                onTitle = if (shelf.view == "more-by-artist") toArtist else null,
+                            )
+                        }
+                    }
                 }
             }
         }

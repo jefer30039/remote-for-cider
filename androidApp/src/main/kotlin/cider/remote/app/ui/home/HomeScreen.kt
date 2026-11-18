@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -85,6 +86,8 @@ import cider.remote.app.ui.library.PlayMenu
 import cider.remote.home
 import cider.remote.model.Artwork
 import coil3.compose.AsyncImage
+import androidx.compose.foundation.text.appendInlineContent
+import cider.remote.app.ui.components.VideoPlayerDialog
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -163,19 +166,40 @@ private fun ShelvesScreen(
 
 /** Estantería de Apple Music (título y fila de portadas); también la usa la página de artista. */
 @Composable
-fun Shelf(remote: CiderRemote, shelf: HomeShelf, onOpen: (Route) -> Unit, players: CoverPlayerPool? = null) {
+fun Shelf(
+    remote: CiderRemote, shelf: HomeShelf, onOpen: (Route) -> Unit, players: CoverPlayerPool? = null,
+    /** Si no es null, el título lleva "›" y tocarlo hace esto ("Más de FKA twigs ›" abre el artista). */
+    onTitle: (() -> Unit)? = null,
+) {
     val scope = rememberCoroutineScope()
-    // Estaciones: se reproducen; el resto abre su página.
+    // Vídeos ("Videos musicales", "Más para ver"): Cider no los reproduce, se ven en el teléfono.
+    var phoneVideo by remember { mutableStateOf<HomeItem?>(null) }
+    // Estaciones: se reproducen en Cider; el resto abre su página.
     val open: (HomeItem) -> Unit = { item ->
         val route = item.toRoute()
-        if (route != null) onOpen(route) else scope.launch { runCatching { remote.api.playItem(item.type, item.id) } }
+        when {
+            route != null -> onOpen(route)
+            item.videoUrl != null -> phoneVideo = item
+            else -> scope.launch { runCatching { remote.api.playItem(item.type, item.id) } }
+        }
     }
+    phoneVideo?.let { v -> VideoPlayerDialog(v.videoUrl!!, v.name, preview = v.type == "music-videos") { phoneVideo = null } }
     Column(Modifier.padding(top = 18.dp, bottom = 10.dp)) {
         shelf.title?.let {
-            Text(
-                it, style = Apple.type.title2, color = Apple.colors.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = Margin, end = Margin, bottom = 12.dp),
-            )
+            Row(
+                Modifier.padding(start = Margin, end = Margin, bottom = 12.dp)
+                    .then(if (onTitle != null) Modifier.combinedClickableCompat(onClick = onTitle) else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    it, style = Apple.type.title2, color = Apple.colors.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (onTitle != null) Icon(
+                    Icons.Rounded.ChevronRight, null, tint = Apple.colors.secondaryLabel,
+                    modifier = Modifier.padding(start = 2.dp).size(26.dp),
+                )
+            }
         }
         when (shelf.kind) {
             ShelfKind.Hero -> {
@@ -211,6 +235,12 @@ fun Shelf(remote: CiderRemote, shelf: HomeShelf, onOpen: (Route) -> Unit, player
                         column.forEachIndexed { i, song -> SongRow(remote, song, divider = i < column.lastIndex) { open(song) } }
                     }
                 }
+            }
+            ShelfKind.Videos -> LazyRow(
+                contentPadding = PaddingValues(horizontal = Margin),
+                horizontalArrangement = Arrangement.spacedBy(Gap),
+            ) {
+                items(shelf.items, key = { it.type + it.id }) { VideoTile(it) { open(it) } }
             }
             ShelfKind.Covers -> {
                 // "Artistas favoritos" son estaciones de artista: Apple las pinta en círculo
@@ -386,6 +416,47 @@ private fun CoverTile(remote: CiderRemote, item: HomeItem, circle: Boolean, onCl
             modifier = Modifier.padding(top = 8.dp),
         )
         item.subtitle?.takeIf { item.type != "stations" }?.let {
+            Text(it, style = Apple.type.subhead, color = Apple.colors.secondaryLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * Vídeo de una estantería (Apple Music para iOS, página de álbum): imagen 16:9 del ancho de una portada,
+ * título con la "E" si es explícito y el artista debajo.
+ */
+@Composable
+private fun VideoTile(item: HomeItem, onClick: () -> Unit) {
+    Column(Modifier.width(CoverSize).combinedClickableCompat(onClick = onClick)) {
+        AsyncImage(
+            model = item.artwork?.sized(640, 360), contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(Apple.colors.fill),
+        )
+        // La "E" va en línea, tras la última palabra (en la segunda línea si el título se parte).
+        val title = androidx.compose.ui.text.buildAnnotatedString {
+            append(item.name)
+            if (item.explicit) appendInlineContent("e", "[E]")
+        }
+        // Más pequeña que la de las tarjetas: 9,6 dp a 4,8 dp del texto (medido en la captura de iOS).
+        val inline = if (!item.explicit) emptyMap() else mapOf(
+            "e" to androidx.compose.foundation.text.InlineTextContent(
+                androidx.compose.ui.text.Placeholder(14.4.sp, 10.sp, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
+            ) {
+                val description = stringResource(R.string.explicit)
+                Box(
+                    Modifier.padding(start = 4.8.dp).size(9.6.dp).clip(RoundedCornerShape(2.dp))
+                        .background(Apple.colors.secondaryLabel).semantics { contentDescription = description },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("E", style = Apple.type.caption.copy(fontSize = 7.sp, lineHeight = 7.sp, fontWeight = FontWeight.Bold), color = Color.Black.copy(alpha = 0.75f))
+                }
+            },
+        )
+        Text(
+            title, style = Apple.type.subhead, color = Apple.colors.label, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            inlineContent = inline, modifier = Modifier.padding(top = 8.dp),
+        )
+        item.subtitle?.let {
             Text(it, style = Apple.type.subhead, color = Apple.colors.secondaryLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

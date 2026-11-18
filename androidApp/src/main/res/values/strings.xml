@@ -203,4 +203,5 @@
     <string name="update_install">Install</string>
     <string name="update_open_page">View on GitHub</string>
     <string name="search_recent">Recently Searched</string>
+    <string name="video_preview">Preview</string>
 </resources>

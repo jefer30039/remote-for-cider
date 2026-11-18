@@ -205,4 +205,5 @@
     <string name="update_install">Instalar</string>
     <string name="update_open_page">Ver en GitHub</string>
     <string name="search_recent">Búsquedas recientes</string>
+    <string name="video_preview">Vista previa</string>
 </resources>

@@ -6,6 +6,7 @@ import cider.remote.CiderEvents
 import cider.remote.ciderHttpClient
 import cider.remote.BrowsePage
 import cider.remote.artistPage
+import cider.remote.albumExtras
 import cider.remote.browse
 import cider.remote.home
 import kotlinx.coroutines.flow.take
@@ -49,6 +50,11 @@ fun main(args: Array<String>) = runBlocking {
             println("último: ${p.latest?.name} (${p.latest?.type}) ${p.latest?.subtitle}")
             println("${p.topSongsTitle}: " + p.topSongs.take(3).joinToString { "${it.name} [${it.subtitle}]${if (it.explicit) " E" else ""}" })
             p.shelves.forEach { println("  ${it.title} (${it.items.size}): " + it.items.take(3).joinToString { "${it.type}:${it.name}" }) }
+        }
+        "album" -> {
+            val e = api.albumExtras(args.getOrElse(1) { "1603753230" })
+            println("fecha=${e.releaseDate} digitalMaster=${e.digitalMaster} copyright=${e.copyright}")
+            e.shelves.forEach { println("  [${it.view}] ${it.kind} ${it.title} (${it.items.size}): " + it.items.take(3).joinToString { "${it.type}:${it.name}${if (it.videoUrl != null) " (mp4)" else ""}" }) }
         }
         "nuevo", "radio" -> {
             api.browse(if (args[0] == "nuevo") BrowsePage.New else BrowsePage.Radio).forEach { shelf ->

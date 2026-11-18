@@ -24,10 +24,18 @@ enum class ShelfKind {
     Feature,
     /** Canciones en columnas de cuatro filas ("Canciones nuevas destacadas"). */
     Songs,
+    /** Vídeos en 16:9 del ancho de una portada ("Videos musicales", "Más para ver" de un álbum). */
+    Videos,
 }
 
 @Serializable
-data class HomeShelf(val title: String?, val kind: ShelfKind, val items: List<HomeItem>)
+data class HomeShelf(
+    val title: String?,
+    val kind: ShelfKind,
+    val items: List<HomeItem>,
+    /** Vista de Apple Music de la que sale (`more-by-artist`, `appears-on`…), en las páginas de álbum. */
+    val view: String? = null,
+)
 
 @Serializable
 data class HomeItem(
@@ -48,6 +56,11 @@ data class HomeItem(
     val releaseDate: String? = null,
     /** Portada animada vertical 3:4 (HLS) para las tarjetas grandes del Inicio. */
     val tallVideo: String? = null,
+    /**
+     * Vídeo subido por el artista (`uploaded-videos`, "Más para ver"): MP4 directo con clave de acceso,
+     * que se reproduce en el teléfono (Cider no los reproduce).
+     */
+    val videoUrl: String? = null,
 )
 
 /** Inicio personal de Apple Music (`listen-now`), el mismo que muestra su app. */
