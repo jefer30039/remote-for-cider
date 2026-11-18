@@ -71,6 +71,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.unit.sp
 import cider.remote.CiderApi
 import cider.remote.albumArtist
@@ -653,6 +655,8 @@ private fun WideCollectionHeader(
     route: Route.Collection,
     squareVideo: String?,
     count: Int?,
+    info: AnimatedCover?,
+    trackTraits: List<String>,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onAddLater: () -> Unit,
@@ -673,9 +677,8 @@ private fun WideCollectionHeader(
                     color = Color.White.copy(alpha = 0.9f), maxLines = 2, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).combinedClickableCompat(onClick = onArtist),
                 )
-                val meta = collectionMeta(route, count)
-                Text(meta, style = Apple.type.subhead.copy(fontWeight = FontWeight.SemiBold), color = secondary,
-                    modifier = Modifier.padding(top = 8.dp))
+                CollectionMeta(route, count, info, style = Apple.type.subhead.copy(fontWeight = FontWeight.SemiBold), color = secondary,
+                    modifier = Modifier.padding(top = 8.dp), trackTraits = trackTraits)
                 Row(
                     Modifier.padding(top = 32.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -694,12 +697,85 @@ private fun WideCollectionHeader(
     }
 }
 
-/** "Álbum • 12 canciones" bajo el título de la colección. */
+/**
+ * Línea bajo el título, como Apple Music: en álbumes "Género • año" y, si los tiene, el logotipo de
+ * Dolby Atmos y la onda de Lossless / Hi-Res Lossless (rasgos del álbum de catálogo, [info]); en
+ * playlists o mientras no llegan esos datos, "Álbum • 12 canciones".
+ */
 @Composable
-private fun collectionMeta(route: Route.Collection, count: Int?): String = listOfNotNull(
-    stringResource(if (route.isPlaylist) R.string.label_playlist else R.string.label_album),
-    count?.let { pluralStringResource(R.plurals.song_count, it, it) },
-).joinToString(" • ")
+private fun CollectionMeta(
+    route: Route.Collection, count: Int?, info: AnimatedCover?, style: androidx.compose.ui.text.TextStyle,
+    color: Color, modifier: Modifier = Modifier, textAlign: TextAlign? = null,
+    /** Rasgos de las canciones (playlists: Apple no los da para la playlist). */
+    trackTraits: List<String> = emptyList(),
+) {
+    val updated = info?.lastModified?.takeIf { route.isPlaylist }?.let { updatedLabel(it) }
+    val parts = when {
+        !route.isPlaylist && (info?.genre != null || info?.releaseYear != null) -> listOfNotNull(info.genre, info.releaseYear)
+        updated != null -> listOf(updated)
+        else -> listOfNotNull(
+            stringResource(if (route.isPlaylist) R.string.label_playlist else R.string.label_album),
+            count?.let { pluralStringResource(R.plurals.song_count, it, it) },
+        )
+    }
+    val traits = info?.audioTraits.orEmpty() + trackTraits
+    val atmos = "atmos" in traits
+    val lossless = when {
+        "hi-res-lossless" in traits -> "Hi-Res Lossless"
+        "lossless" in traits -> "Lossless"
+        else -> null
+    }
+    // Separador como Apple: espacio normal + muy fino (U+200A) a cada lado y el punto al 80 %, algo subido.
+    fun androidx.compose.ui.text.AnnotatedString.Builder.sep() {
+        append(" \u200A")
+        pushStyle(androidx.compose.ui.text.SpanStyle(fontSize = 0.8.em, baselineShift = androidx.compose.ui.text.style.BaselineShift(0.12f))); append("•"); pop()
+        append("\u200A ")
+    }
+    val text = androidx.compose.ui.text.buildAnnotatedString {
+        parts.forEachIndexed { i, p -> if (i > 0) sep(); append(p) }
+        if (atmos) { sep(); appendInlineContent("atmos", "Dolby Atmos") }
+        if (lossless != null) { sep(); appendInlineContent("lossless", "Lossless"); append(" "); append(lossless) }
+    }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // Medidas en em con Inter (mayúsculas = 0,727 em), tomadas de Apple Music para Android ("CAPRISONGS"):
+    // Dolby Atmos = logotipo oficial (110,76 × 15,64, mayúsculas 12,02, línea base a 12,03) con mayúsculas
+    // 1,08 veces las del texto, apoyado en la línea base (la "y" baja con un desplazamiento); Lossless =
+    // logo de Apple Lossless (res/drawable/apple_lossless.xml) de 2,19 veces las mayúsculas de ancho.
+    val inline = mapOf(
+        "atmos" to androidx.compose.foundation.text.InlineTextContent(
+            androidx.compose.ui.text.Placeholder(7.23.em, 1.022.em, androidx.compose.ui.text.PlaceholderVerticalAlign.AboveBaseline),
+        ) {
+            val drop = with(density) { (style.fontSize * 0.236f).toDp() }
+            Icon(
+                androidx.compose.ui.res.painterResource(R.drawable.dolby_atmos), null, tint = color,
+                modifier = Modifier.fillMaxSize().offset(y = drop),
+            )
+        },
+        "lossless" to androidx.compose.foundation.text.InlineTextContent(
+            androidx.compose.ui.text.Placeholder(1.59.em, 0.954.em, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
+        ) { Icon(androidx.compose.ui.res.painterResource(R.drawable.apple_lossless), null, tint = color, modifier = Modifier.fillMaxSize()) },
+    )
+    Text(text, style = style, color = color, modifier = modifier, textAlign = textAlign, inlineContent = inline)
+}
+
+/** "Actualizada hace 2 d" (Apple Music: "Updated 2d ago"); pasado un mes, la fecha. */
+@Composable
+private fun updatedLabel(iso: String): String? {
+    val then = runCatching { java.time.Instant.parse(iso) }.getOrNull() ?: return null
+    val mins = java.time.Duration.between(then, java.time.Instant.now()).toMinutes().coerceAtLeast(0)
+    return when {
+        mins < 1 -> stringResource(R.string.updated_now)
+        mins < 60 -> stringResource(R.string.updated_ago, stringResource(R.string.ago_minutes, mins.toInt()))
+        mins < 24 * 60 -> stringResource(R.string.updated_ago, stringResource(R.string.ago_hours, (mins / 60).toInt()))
+        mins < 7 * 24 * 60 -> stringResource(R.string.updated_ago, stringResource(R.string.ago_days, (mins / (24 * 60)).toInt()))
+        mins < 30 * 24 * 60 -> stringResource(R.string.updated_ago, stringResource(R.string.ago_weeks, (mins / (7 * 24 * 60)).toInt()))
+        else -> stringResource(
+            R.string.updated_on,
+            java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM)
+                .format(then.atZone(java.time.ZoneId.systemDefault())),
+        )
+    }
+}
 
 private fun Color.darker(f: Float) = Color(red * f, green * f, blue * f, alpha)
 
@@ -720,6 +796,12 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
     }
     val cover by produceState<AnimatedCover?>(null, route) {
         value = runCatching { remote.api.animatedCover(route.kind, route.id) }.getOrNull()
+    }
+    // Playlists: rasgos de audio de sus canciones (de la versión de catálogo; las de la biblioteca sin
+    // catálogo no los tienen).
+    val catalogPlaylist = if (!route.isPlaylist) null else if (route.kind == "playlists") route.id else cover?.catalogId
+    val trackTraits by produceState(emptyList<String>(), catalogPlaylist) {
+        value = catalogPlaylist?.let { runCatching { remote.api.playlistAudioTraits(it) }.getOrNull() }.orEmpty()
     }
     // Color oficial de Apple (catálogo) si lo hay; si no, el color medio de la carátula.
     val official = cover?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() }
@@ -768,7 +850,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
         LazyVerticalGrid(columns = GridCells.Fixed(1), state = grid, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             fullWidth {
                 if (wideScreen) WideCollectionHeader(
-                    route, cover?.square, tracks?.getOrNull()?.size, onArtist = toArtist, secondary = secondary,
+                    route, cover?.square, tracks?.getOrNull()?.size, cover, trackTraits, onArtist = toArtist, secondary = secondary,
                     onPlay = { play(false) }, onShuffle = { play(true) },
                     onAddLater = { scope.launch { runCatching { remote.api.queueAddLater(route.kind, route.id) } } },
                 ) else
@@ -805,10 +887,10 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                             modifier = Modifier.padding(top = 2.dp).clip(RoundedCornerShape(6.dp)).combinedClickableCompat(onClick = toArtist).padding(horizontal = 6.dp),
                         )
                         val count = tracks?.getOrNull()?.size
-                        val meta = collectionMeta(route, count)
-                        Text(
-                            meta, style = Apple.type.caption.copy(fontWeight = FontWeight.SemiBold),
-                            color = secondary, modifier = Modifier.padding(top = 8.dp),
+                        // 10,3 sp: medido contra Apple Music para Android con el título a la misma escala.
+                        CollectionMeta(
+                            route, count, cover, style = Apple.type.caption.copy(fontSize = 10.3.sp, fontWeight = FontWeight.SemiBold),
+                            color = secondary, modifier = Modifier.padding(top = 8.dp), textAlign = TextAlign.Center, trackTraits = trackTraits,
                         )
                         Row(
                             Modifier.padding(top = 18.dp),

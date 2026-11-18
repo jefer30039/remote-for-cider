@@ -10,30 +10,6 @@ import androidx.compose.ui.unit.dp
 
 /** Iconos que Material no tiene, dibujados como los SF Symbols que usa Apple Music. */
 object AppleIcons {
-    /**
-     * Logo de Apple Lossless (indicador "Lossless" de la hoja): tres ondas senoidales desplazadas, con
-     * trazo de pluma (fino al subir, grueso en la bajada). Calcado de una captura de iOS ampliada; logo
-     * de 46 × 29 (1,74 × 1,09 veces la altura de las mayúsculas del texto).
-     */
-    val Lossless: ImageVector by lazy {
-        ImageVector.Builder("Lossless", 15.dp, 9.5.dp, 48f, 31f).apply {
-            for (i in 0..2) {
-                val x = 1f + i * 5.52f
-                path(stroke = SolidColor(Color.Black), strokeLineWidth = 1f, strokeLineCap = StrokeCap.Round) {
-                    moveTo(x, 16.95f)
-                    curveTo(x + 1.84f, 6.8f, x + 4.6f, 1.87f, x + 7.82f, 1.87f)
-                    curveTo(x + 11.96f, 1.87f, x + 19.32f, 29.13f, x + 23.92f, 29.13f)
-                    curveTo(x + 28.52f, 29.13f, x + 33.12f, 21.3f, x + 34.96f, 13.18f)
-                }
-                path(stroke = SolidColor(Color.Black), strokeLineWidth = 2.3f, strokeLineCap = StrokeCap.Round) {
-                    moveTo(x + 9.58f, 3.13f)
-                    curveTo(x + 13.19f, 7.7f, x + 18.14f, 23.3f, x + 22f, 27.87f)
-                }
-            }
-        }.build()
-    }
-
-
     /** `square.stack`: álbumes. */
     val Albums: ImageVector by lazy {
         ImageVector.Builder("Albums", 24.dp, 24.dp, 24f, 24f).apply {

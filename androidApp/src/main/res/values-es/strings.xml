@@ -114,6 +114,13 @@
     <string name="empty_artists">No hay artistas</string>
     <string name="empty_albums">No hay álbumes</string>
     <string name="empty_songs">No hay canciones</string>
+    <string name="updated_ago">Actualizada hace %1$s</string>
+    <string name="updated_on">Actualizada el %1$s</string>
+    <string name="updated_now">Actualizada ahora</string>
+    <string name="ago_minutes">%1$d min</string>
+    <string name="ago_hours">%1$d h</string>
+    <string name="ago_days">%1$d d</string>
+    <string name="ago_weeks">%1$d sem</string>
     <string name="label_playlist">Playlist</string>
     <string name="label_album">Álbum</string>
     <string name="label_song">Canción</string>

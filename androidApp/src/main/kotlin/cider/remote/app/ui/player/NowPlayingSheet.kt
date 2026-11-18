@@ -1065,7 +1065,7 @@ private fun Progress(remote: CiderRemote, state: PlayerState) {
                     .background(Color.White.copy(alpha = 0.08f)).padding(start = 6.6.dp, end = 7.2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(AppleIcons.Lossless, null, tint = Secondary, modifier = Modifier.size(15.dp, 9.5.dp))
+                Icon(androidx.compose.ui.res.painterResource(R.drawable.apple_lossless), null, tint = Secondary, modifier = Modifier.size(15.dp, 9.dp))
                 Text(badge, style = timeStyle, color = Secondary, modifier = Modifier.padding(start = 6.6.dp))
             }
         }

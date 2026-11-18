@@ -231,6 +231,7 @@ data class AmAttributes(
     val releaseDate: String? = null,
     /** Sin esto Apple no deja reproducirla (canciones aún no publicadas: "Track 3" / "Unknown"). */
     val playParams: PlayParams? = null,
+    val audioTraits: List<String> = emptyList(),
 )
 
 @Serializable
@@ -290,4 +291,11 @@ data class AnimatedCover(
     /** Id y número de canciones del álbum en el catálogo (para "Ver álbum completo" desde la biblioteca). */
     val catalogId: String? = null,
     val trackCount: Int? = null,
+    /** Datos del álbum de catálogo para la línea bajo el título (Apple Music: "Electrónica • 2022 • Dolby Atmos • Hi-Res Lossless"). */
+    val genre: String? = null,
+    val releaseYear: String? = null,
+    /** `atmos`, `spatial`, `lossless`, `hi-res-lossless`, `lossy-stereo`. Vacío en las playlists. */
+    val audioTraits: List<String> = emptyList(),
+    /** Última actualización de una playlist (ISO 8601), para "Actualizada hace 2 d". */
+    val lastModified: String? = null,
 )

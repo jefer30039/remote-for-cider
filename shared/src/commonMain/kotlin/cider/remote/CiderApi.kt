@@ -272,6 +272,10 @@ class CiderApi(
                 ?.get("url")?.jsonPrimitive?.content?.let { Artwork(url = it) },
             catalogId = item["id"]?.jsonPrimitive?.content,
             trackCount = attributes["trackCount"]?.jsonPrimitive?.content?.toIntOrNull(),
+            genre = (attributes["genreNames"] as? kotlinx.serialization.json.JsonArray)?.firstOrNull()?.jsonPrimitive?.content,
+            releaseYear = attributes["releaseDate"]?.jsonPrimitive?.content?.take(4),
+            audioTraits = (attributes["audioTraits"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { it.jsonPrimitive.content }.orEmpty(),
+            lastModified = attributes["lastModifiedDate"]?.jsonPrimitive?.content,
         )
         return cover.takeIf { it.square != null || it.tall != null || it.bgColor != null || it.catalogId != null }
     }
@@ -313,6 +317,14 @@ class CiderApi(
 
     suspend fun catalogTracks(type: String, id: String): List<AmItem> =
         amapiRaw("v1/catalog/\$STOREFRONT/$type/$id/tracks?limit=100")
+
+    /**
+     * Rasgos de audio de una playlist del catálogo: Apple no los da para la playlist, así que se juntan
+     * los de sus primeras 100 canciones (Apple Music muestra "Dolby Atmos" o "Hi-Res Lossless" con que
+     * alguna los tenga: en Replay 2026, 73 de 100 en Atmos y 11 en Hi-Res, y enseña los dos).
+     */
+    suspend fun playlistAudioTraits(catalogId: String): List<String> =
+        catalogTracks("playlists", catalogId).flatMap { it.attributes?.audioTraits.orEmpty() }.distinct()
 
     /**
      * Ids de las canciones de un álbum o playlist de la biblioteca (`albums` / `playlists`) que
