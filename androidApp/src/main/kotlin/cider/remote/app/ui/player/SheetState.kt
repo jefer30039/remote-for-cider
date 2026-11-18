@@ -1,7 +1,6 @@
 package cider.remote.app.ui.player
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -101,10 +100,13 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
         }
     }
 
-    /** Cierra; [released] = al soltar el dedo (muelle), si no con la curva lenta de Apple Music (botón atrás, ir a otra página). */
+    /**
+     * Cierra; [released] = al soltar el dedo (muelle), si no (botón atrás, ir a otra página) con la
+     * misma curva rápida que al abrir con un toque. La de Apple Music (580 ms casi lineal) se veía lenta.
+     */
     fun close(released: Boolean = false) {
         target = 1f
-        scope.launch { position.animateTo(1f, if (!released) Close else Settle) }
+        scope.launch { position.animateTo(1f, if (!released) Tap else Settle) }
     }
 
     fun dragBy(px: Float) {
@@ -132,9 +134,6 @@ class SheetState(initiallyOpen: Boolean, private val scope: CoroutineScope, priv
         // Medido en Apple Music. Al abrir con un toque sale rápida y frena como una exponencial de
         // constante ~95 ms: 37 % a los 40 ms, 67 % a los 107, 87 % a los 173 y 95 % a los 240.
         val Tap = tween<Float>(450, easing = { x -> ((1.0 - kotlin.math.exp(-x * 450.0 / 95.0)) / (1.0 - kotlin.math.exp(-450.0 / 95.0))).toFloat() })
-        // Al cerrar va casi a velocidad constante y frena al final: 28 % a los 140 ms, 49 % a los 240,
-        // 68 % a los 340, 82 % a los 440 y acaba hacia los 590.
-        val Close = tween<Float>(580, easing = CubicBezierEasing(0.25f, 0.3f, 0.6f, 1f))
     }
 }
 
