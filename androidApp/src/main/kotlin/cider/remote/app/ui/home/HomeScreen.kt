@@ -443,10 +443,12 @@ private fun VideoTile(item: HomeItem, onClick: () -> Unit) {
             model = item.artwork?.sized(640, 360), contentDescription = null, contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(Apple.colors.fill),
         )
-        // La "E" va en línea, tras la última palabra (en la segunda línea si el título se parte).
+        // La "E" va en línea, tras la última palabra (en la segunda línea si el título se parte). La une a esa
+        // palabra un U+2060 (unión de palabras): sin él, la línea se podía partir justo antes de la "E" y quedaba
+        // sola debajo ("jealousy (feat. rema)", que en iOS cabe en una línea y aquí, con Inter, no).
         val title = androidx.compose.ui.text.buildAnnotatedString {
             append(item.name)
-            if (item.explicit) appendInlineContent("e", "[E]")
+            if (item.explicit) { append("\u2060"); appendInlineContent("e", "[E]") }
         }
         // Más pequeña que la de las tarjetas: 9,6 dp a 4,8 dp del texto (medido en la captura de iOS).
         val inline = if (!item.explicit) emptyMap() else mapOf(
