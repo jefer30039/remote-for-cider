@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Icon
+import cider.remote.app.ui.rememberZoomSource
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -246,13 +247,14 @@ private fun Hero(page: ArtistPage?, fallbackName: String, bg: androidx.compose.r
 private fun LatestRelease(remote: CiderRemote, item: HomeItem, margin: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val date = item.subtitleDate()
+    val zoom = rememberZoomSource(6.dp)
     Row(
         Modifier.padding(horizontal = margin, vertical = 12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.08f)).combinedClickableCompat(onClick = onClick, onLongClick = { menu = true })
+            .background(Color.White.copy(alpha = 0.08f)).then(zoom.tile).combinedClickableCompat(onClick = onClick, onLongClick = { menu = true }, ripple = !zoom.flying)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ArtworkImage(item.artwork, 76.dp, shape = RoundedCornerShape(6.dp), px = 300)
+        ArtworkImage(item.artwork, 76.dp, shape = RoundedCornerShape(6.dp), px = 300, modifier = zoom.cover)
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             date?.let { Text(it, style = Apple.type.caption, color = Apple.colors.secondaryLabel, maxLines = 1) }
             Row(verticalAlignment = Alignment.CenterVertically) {

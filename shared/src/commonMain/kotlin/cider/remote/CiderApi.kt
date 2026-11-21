@@ -253,8 +253,31 @@ class CiderApi(
 
     private suspend fun editorialVideo(path: String): AnimatedCover? {
         val root = CiderJson.parseToJsonElement(request(HttpMethod.Get, "/amapi/raw/$path").bodyAsText()).jsonObject
-        val item = root["data"]?.jsonObject?.get("data")?.jsonArray?.firstOrNull()?.jsonObject
-        val attributes = item?.get("attributes")?.jsonObject ?: return null
+        val item = root["data"]?.jsonObject?.get("data")?.jsonArray?.firstOrNull()?.jsonObject ?: return null
+        return coverOf(item)
+    }
+
+    /**
+     * Portada animada y datos de catálogo de varios álbumes o playlists de la biblioteca de una vez
+     * ([kind] `albums` o `playlists`; hasta 100 ids): `v1/me/library/{kind}?ids=…&include=catalog`. Sirve
+     * para saber antes de abrirlos si tienen vídeo (las estanterías de Inicio no lo traen para los de la
+     * biblioteca). Clave: id de la biblioteca.
+     */
+    suspend fun libraryCovers(kind: String, ids: List<String>): Map<String, AnimatedCover> {
+        if (ids.isEmpty()) return emptyMap()
+        val path = "v1/me/library/$kind?ids=${ids.take(100).joinToString(",")}&include=catalog&extend=editorialVideo"
+        val root = CiderJson.parseToJsonElement(request(HttpMethod.Get, "/amapi/raw/$path").bodyAsText()).jsonObject
+        return root["data"]?.jsonObject?.get("data")?.jsonArray.orEmpty().mapNotNull { e ->
+            val o = e.jsonObject
+            val id = o["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val catalog = (o["relationships"]?.jsonObject?.get("catalog")?.jsonObject?.get("data") as? kotlinx.serialization.json.JsonArray)
+                ?.firstOrNull()?.jsonObject ?: return@mapNotNull null
+            coverOf(catalog)?.let { id to it }
+        }.toMap()
+    }
+
+    private fun coverOf(item: kotlinx.serialization.json.JsonObject): AnimatedCover? {
+        val attributes = item["attributes"]?.jsonObject ?: return null
         val video = attributes["editorialVideo"]?.jsonObject
         // La primera variante que traiga vídeo; su `previewFrame` es un fotograma fijo de ese mismo vídeo.
         fun pick(vararg keys: String) = keys.firstNotNullOfOrNull { key ->

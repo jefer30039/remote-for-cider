@@ -21,6 +21,7 @@ import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.runtime.key
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -60,6 +61,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -109,6 +111,7 @@ import cider.remote.app.ui.components.glassSource
 import cider.remote.app.ui.components.LocalGlassBackdrop
 import cider.remote.app.ui.components.GlassCircleButton
 import cider.remote.app.ui.components.glassFade
+import kotlinx.coroutines.flow.first
 import cider.remote.app.ui.components.glassEdge
 import cider.remote.app.ui.components.rememberGlassBackdrop
 import cider.remote.app.ui.components.rememberSharedBackdrop
@@ -200,7 +203,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     // si se cerró con la letra o la cola a la vista.
     LaunchedEffect(sheetVisible, wide) { if (!sheetVisible && !wide) sheetMode = SheetMode.Artwork }
     PredictiveBackHandler(enabled = !sheetOpen && !sidebar && stack.size > 1) { events ->
-        pages.predictiveBack(events, rootSize.width.toFloat())
+        pages.predictiveBack(events, rootSize.width.toFloat(), rootSize.height.toFloat())
     }
 
     val hasTrack = state.track != null
@@ -315,7 +318,16 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         fun shownFor(test: (PageEntry) -> Boolean): () -> Float = {
             val t = pages.transition
             if (t == null) (if (test(pages.top(tab))) 1f else 0f)
-            else lerp(if (test(t.under)) 1f else 0f, if (test(t.over)) 1f else 0f, t.progress.value.coerceIn(0f, 1f))
+            else {
+                val c = t.cover()
+                val under = if (test(t.under)) 1f else 0f
+                val over = if (test(t.over)) 1f else 0f
+                // Zoom: los botones de vidrio de una página y otra no se cruzan (los de la que queda debajo
+                // se van en la primera mitad y los de la de arriba llegan en la segunda): cada botón de
+                // vidrio a la vista son dos capas con desenfoque por fotograma.
+                if (t.zoom != null && under != over) (if (over > under) ((c - 0.5f) / 0.5f) else (1f - c / 0.5f)).coerceIn(0f, 1f)
+                else lerp(under, over, c)
+            }
         }
         fun anyShows(test: (PageEntry) -> Boolean) = test(topEntry) || (transition != null && (test(transition.over) || test(transition.under)))
         // El fondo va dentro de la fuente: el vidrio tiene que ver algo opaco detrás.
@@ -326,9 +338,44 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         val pastEdge by remember(topEntry.key) { derivedStateOf { scrolled.floatValue > 4f } }
         // Barra minimizada (iOS 26): al desplazar hacia abajo se encoge; al subir o al llegar arriba, vuelve.
         val compactState = remember(route) { mutableStateOf(false) }
+        val dragDeadZone = with(density) { 18.dp.toPx() }
+        // Dónde está el dedo (para cerrar arrastrando un álbum abierto con zoom); se observa sin consumir.
+        val finger = remember { mutableStateOf(Offset.Zero) }
         val scrollWatch = remember(topEntry.key) {
             object : NestedScrollConnection {
+                // Cerrar deslizando hacia abajo un álbum o playlist abierto con zoom (iOS): con la lista arriba
+                // del todo, lo que la lista no puede subir mueve la página hacia su carátula.
+                // La página pasa a ser una tarjeta suelta bajo el dedo (ZoomPose.drag) y al soltar vuela a su
+                // carátula o vuelve a pantalla completa.
+                var pulled = 0f
+                var startX = 0f
+                fun pull(dy: Float) {
+                    pulled = (pulled + dy).coerceAtLeast(0f)
+                    val page = androidx.compose.ui.geometry.Size(rootSize.width.toFloat().coerceAtLeast(1f), rootSize.height.toFloat().coerceAtLeast(1f))
+                    pages.zoomDragTo(ZoomPose.drag(pages.dragPivot, (pulled - dragDeadZone).coerceAtLeast(0f), finger.value.x - startX, page))
+                }
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (!pages.dragging || source != NestedScrollSource.UserInput) return Offset.Zero
+                    pull(available.y)
+                    return Offset(0f, available.y)
+                }
+                override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                    if (!pages.dragging) return androidx.compose.ui.unit.Velocity.Zero
+                    // Como iOS: decide dónde estaría la tarjeta 0,12 s después con la velocidad que lleva
+                    // (un tirón corto y rápido cierra; soltar subiendo, no).
+                    val h = rootSize.height.toFloat().coerceAtLeast(1f)
+                    val close = pages.dragScale - 0.67f * 0.12f * available.y / h < 0.905f
+                    pulled = 0f
+                    pages.zoomDragEnd(close)
+                    return available
+                }
                 override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                    if (source == NestedScrollSource.UserInput && available.y > 0.5f && !pages.dragging && pages.zoomDragStart(finger.value)) {
+                        pulled = 0f
+                        startX = finger.value.x
+                        pull(available.y)
+                        return Offset(0f, available.y)
+                    }
                     scrolled.floatValue = (scrolled.floatValue - consumed.y).coerceAtLeast(0f)
                     if (consumed.y < -2f && scrolled.floatValue > 24f) compactState.value = true
                     else if (consumed.y > 2f || scrolled.floatValue < 4f) compactState.value = false
@@ -378,24 +425,65 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             sampler.request()
         }
         // Luminancia detrás de las piezas: un poco después de cambiar de pantalla (el contenido llega asíncrono).
-        LaunchedEffect(route) { for (ms in listOf(150L, 500L, 1200L, 2500L)) { delay(ms); sampler.request() } }
+        LaunchedEffect(route) {
+            for (ms in listOf(150L, 500L, 1200L, 2500L)) {
+                delay(ms)
+                // Nunca en mitad de una transición: cada muestra retiene el hilo de render 5–10 ms.
+                androidx.compose.runtime.snapshotFlow { pages.transition == null }.first { it }
+                sampler.request()
+            }
+        }
         // Borde de desplazamiento bajo la barra de estado: solo con contenido debajo, como iOS
         // (las páginas de álbum empiezan con su carátula arriba). En todas las pantallas (iOS 26);
         // sobre álbum y artista, con el color de fondo de esa página.
         val edge = animateFloatAsState(if (pastEdge) 1f else 0f, label = "borde")
-        val edgeVisible by remember { derivedStateOf { edge.value > 0f } }
         val pageColor = pages.colorOf(topEntry.key).value
+        // Durante una transición el borde va con ella: el de la página de debajo aparece a medida que la de
+        // arriba la destapa (y al revés), con el color de la página a la que pertenece. Antes saltaba al de
+        // la página nueva en cuanto empezaba el cambio: al cerrar un álbum aparecía de golpe sobre él.
+        val edgeBase = Apple.colors.background
+        val edgeOf = { e: PageEntry -> pages.scrolledOf(e.key).floatValue > 4f }
+        val edgeAlpha = remember(transition, edge) {
+            {
+                val t = transition
+                if (t == null) edge.value else lerp(if (edgeOf(t.under)) 1f else 0f, if (edgeOf(t.over)) 1f else 0f, t.cover())
+            }
+        }
+        val edgeColor = remember(transition, pageColor, edgeBase) {
+            {
+                val t = transition
+                if (t == null) pageColor ?: edgeBase
+                else {
+                    val under = pages.colorOf(t.under.key).value ?: edgeBase
+                    val over = pages.colorOf(t.over.key).value ?: edgeBase
+                    when {
+                        edgeOf(t.under) && edgeOf(t.over) -> androidx.compose.ui.graphics.lerp(under, over, t.cover())
+                        edgeOf(t.under) -> under
+                        else -> over
+                    }
+                }
+            }
+        }
+        val edgeVisible by remember(edgeAlpha) { derivedStateOf { edgeAlpha() > 0f } }
         val edgeHeight = top + if (wide) 88.dp else 56.dp
         Box(
             Modifier.fillMaxSize().glassSource(haze)
                 .then(if (pageLayer != null) Modifier.layerBackdrop(pageLayer) else Modifier)
-                .background(Apple.colors.background).nestedScroll(scrollWatch),
+                .background(Apple.colors.background).nestedScroll(scrollWatch)
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull()?.let { finger.value = it.position }
+                    }
+                },
         ) { CompositionLocalProvider(LocalOpenRoute provides open, LocalGlassBackdrop provides haze, LocalScrollToTop provides scrollToTop, cider.remote.app.ui.components.LocalPageSettled provides pagesSettled) {
             // Durante una transición se componen las dos páginas (la de debajo primero). En reposo,
             // la de arriba y, oculta y sin colocar, la anterior: así no se desmonta al terminar de
             // abrir (soltar Inicio con sus vídeos costaba ~50 ms) y volver empieza sin componer nada.
             // `key` conserva cada página al pasar de una lista a otra.
             val entries = pages.entries(tab)
+            // Zoom: la página de atrás se aleja y deja ver un marco, del color de esa página (su desenfoque
+            // se derrama en él, ver ZoomBackdrop).
+            if (transition?.zoom != null) Box(Modifier.fillMaxSize().background(pages.colorOf(transition.under.key).value ?: Apple.colors.background))
             val shown = if (transition != null) listOf(transition.under, transition.over)
             else listOfNotNull(entries.getOrNull(entries.size - 2), topEntry)
             for (entry in shown) key(entry.key) {
@@ -405,6 +493,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                     else -> -1
                 }
                 val progress = transition?.progress
+                val zoom = transition?.zoom
                 // La página se mueve con una propiedad de su capa: la sombra y el oscurecido van en
                 // capas hermanas que solo cambian de opacidad. Dibujarlos alrededor del contenido
                 // obligaba a volver a grabar la página entera en cada fotograma (8–10 ms de hilo UI).
@@ -412,7 +501,34 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                     Modifier.fillMaxSize()
                         .graphicsLayer {
                             val p = progress?.value?.coerceIn(0f, 1f) ?: 1f
-                            translationX = when (role) {
+                            if (zoom != null && role == 1) {
+                                // Zoom (iOS): un rectángulo redondeado que va de la carátula tocada a la pantalla
+                                // (o a la tarjeta que se arrastra), con la página dentro escalada a su ancho.
+                                // El progreso puede pasar un poco de la carátula al aterrizar (rebote).
+                                val raw = (progress?.value ?: 1f).coerceIn(-0.08f, 1f)
+                                val t = Zoom.shape(raw, transition!!.opening, transition.landing)
+                                val card = Zoom.card(zoom.live(), size, t, transition.opening, transition.pose, transition.poseAmount.value)
+                                val sc = (card.width / size.width).coerceAtLeast(0.01f)
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                                scaleX = sc; scaleY = sc
+                                translationX = card.left
+                                translationY = card.top
+                                clip = true
+                                shape = ZoomClip(card.height / sc, Zoom.corner(zoom, t) / sc)
+                                // Sombra de la tarjeta mientras no llena la pantalla; se va al llegar a la carátula.
+                                val lifted = card.width < size.width - 1f
+                                shadowElevation = if (lifted) 24.dp.toPx() / sc else 0f
+                                // Entra poco a poco al despegarse de la pantalla (no de golpe en el primer fotograma).
+                                val away = ((size.width - card.width) / (size.width * 0.1f)).coerceIn(0f, 1f)
+                                val shade = Color.Black.copy(alpha = 0.5f * (t / 0.1f).coerceIn(0f, 1f) * away)
+                                ambientShadowColor = shade
+                                spotShadowColor = shade
+                            } else if (zoom != null && role == -1) {
+                                // La de atrás se aleja un poco mientras la de arriba la tapa (iOS). Sin recorte:
+                                // sus copias desenfocadas y el oscurecido se salen de la página para llenar la pantalla.
+                                val sc = lerp(1f, Zoom.UnderScale, transition!!.cover())
+                                scaleX = sc; scaleY = sc
+                            } else translationX = when (role) {
                                 1 -> size.width * (1f - p)
                                 -1 -> -size.width * PageStack.UnderShift * p
                                 else -> 0f
@@ -422,7 +538,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                             alpha = if (role == 2) 0f else 1f
                             // La de debajo solo se ve a la izquierda de la que entra: recortada a esa
                             // franja, el vidrio no repinta la página entera en cada fotograma.
-                            if (role == -1) {
+                            if (role == -1 && zoom == null) {
                                 clip = true
                                 shape = UnderPageClip(p)
                             }
@@ -436,18 +552,44 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                             } else Modifier,
                         ),
                 ) {
-                    if (role == 1) Box(
+                    if (role == 1 && zoom == null) Box(
                         // Sombra en el borde izquierdo de la página que entra (iOS).
                         Modifier.fillMaxHeight().width(14.dp).offset(x = (-14).dp)
                             .graphicsLayer { alpha = progress?.value?.coerceIn(0f, 1f) ?: 1f }
                             .background(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.10f)))),
                     )
-                    Box(Modifier.fillMaxSize().background(Apple.colors.background)) {
+                    // Zoom: la página de atrás se desenfoca mientras la de arriba crece (iOS). Sus copias
+                    // desenfocadas están en caché (ZoomBackdrop) y aquí solo se funden; cuando una la tapa
+                    // del todo, la página nítida deja de dibujarse.
+                    val zoomUnder = role == -1 && zoom != null
+                    val backdrop = rememberZoomBackdrop()
+                    val nearAlpha = remember(transition) { { ZoomBlur.near(transition?.cover() ?: 1f) } }
+                    val farAlpha = remember(transition) { { ZoomBlur.far(transition?.cover() ?: 1f) } }
+                    val underColor = pages.colorOf(entry.key).value ?: Apple.colors.background
+                    val flyingAnchor = if (role == -1) zoom?.anchor else null
+                    DisposableEffect(flyingAnchor) {
+                        flyingAnchor?.flying = true
+                        onDispose { flyingAnchor?.flying = false }
+                    }
+                    val backdropSource = remember(backdrop, underColor, zoom) {
+                        Modifier.zoomBackdropSource(backdrop, ZoomNearBlur, ZoomBackBlur, underColor, zoom)
+                    }
+                    Box(
+                        Modifier.fillMaxSize()
+                            .then(
+                                if (zoomUnder) Modifier.graphicsLayer { alpha = if (ZoomBlur.covered(transition?.cover() ?: 1f)) 0f else 1f }
+                                    .then(backdropSource)
+                                else Modifier,
+                            )
+                            .background(Apple.colors.background),
+                    ) {
                     saveable.SaveableStateProvider(entry.key) {
                         CompositionLocalProvider(
                             cider.remote.app.ui.LocalPageBackground provides pages.colorOf(entry.key),
                             // La oculta pausa sus portadas animadas.
-                            LocalPageHidden provides if (role == 2) AlwaysHidden else pageHidden,
+                            // También la de atrás durante un zoom: va desenfocada, y cada fotograma de sus vídeos
+                            // obligaría a rehacer las copias desenfocadas.
+                            LocalPageHidden provides if (role == 2 || (role == -1 && zoom != null)) AlwaysHidden else pageHidden,
                         ) {
                             val r = entry.route
                             val pad = listPadding(entry.nested)
@@ -465,11 +607,43 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                         }
                     }
                     }
+                    // Zoom: encima, la carátula tocada, que se funde con la página en el primer tercio del
+                    // recorrido; así el primer fotograma es la tarjeta tal cual.
+                    val zoomArt = (entry.route as? Route.Collection)?.artwork
+                    // Solo desde carátulas cuadradas (las tarjetas 3:4 de Inicio llevan otra imagen).
+                    val squareSource = zoom != null && kotlin.math.abs(zoom.rect.width - zoom.rect.height) < 3f
+                    if (role == 1 && squareSource && zoomArt != null) coil3.compose.AsyncImage(
+                        model = zoomArt.sized(400), contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer {
+                            val p = progress?.value?.coerceIn(0f, 1f) ?: 1f
+                            val k = (p / 0.35f).coerceIn(0f, 1f)
+                            alpha = 1f - k * k * (3f - 2f * k)
+                            // Una sola imagen: la opacidad se aplica al dibujarla. Con capa aparte (lo normal con
+                            // alfa < 1) era un búfer del ancho de la pantalla por fotograma, y otro por cada pieza
+                            // de vidrio que lee la página.
+                            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+                        },
+                    )
+                    if (zoomUnder) {
+                        Box(Modifier.fillMaxSize().zoomBackdropLevel(backdrop, far = false, nearAlpha))
+                        Box(Modifier.fillMaxSize().zoomBackdropLevel(backdrop, far = true, farAlpha))
+                    }
                     // La de debajo se oscurece al quedar tapada.
                     if (role == -1) Box(
                         Modifier.fillMaxSize()
-                            .graphicsLayer { alpha = PageStack.UnderDim * (progress?.value?.coerceIn(0f, 1f) ?: 1f) }
-                            .background(Color.Black),
+                            // Un solo rectángulo: opacidad al dibujarlo. Con capa aparte era un búfer a pantalla
+                            // completa por fotograma, y otro por cada pieza de vidrio que lee la página.
+                            .graphicsLayer {
+                                alpha = PageStack.UnderDim * (transition?.cover() ?: 1f)
+                                compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+                            }
+                            // En un zoom la página se aleja: el oscurecido se sale de ella para no dejar un marco.
+                            .drawBehind {
+                                val mx = if (zoom != null) size.width * 0.1f else 0f
+                                val my = if (zoom != null) size.height * 0.1f else 0f
+                                drawRect(Color.Black, Offset(-mx, -my), androidx.compose.ui.geometry.Size(size.width + 2 * mx, size.height + 2 * my))
+                            },
                     )
                 }
             }
@@ -479,7 +653,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             // su fundido no regraba la página.
             if (edgeVisible) Box(
                 Modifier.align(Alignment.TopCenter).fillMaxWidth().height(edgeHeight)
-                    .graphicsLayer { alpha = edge.value }.glassFadeVeil(pageColor ?: Apple.colors.background),
+                    .graphicsLayer { alpha = edgeAlpha() }.glassFadeVeil(edgeColor),
             )
         }
 
@@ -487,7 +661,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         // el velo, dentro de ella (ver arriba).
         if (edgeVisible) Box(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().height(edgeHeight)
-                .graphicsLayer { alpha = edge.value }.glassFade(haze, pageColor ?: Apple.colors.background, withVeil = false),
+                .graphicsLayer { alpha = edgeAlpha() }.glassFade(haze, pageColor ?: Apple.colors.background, withVeil = false),
         )
 
         if (anyShows { it.nested }) {
@@ -496,7 +670,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             val backShown = remember(transition, topEntry) { shownFor { it.nested } }
             GlassCircleButton(
                 Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onClick = back,
-                modifier = Modifier.padding(start = SideMargin, top = top + 13.dp).graphicsLayer { alpha = backShown() },
+                modifier = Modifier.padding(start = SideMargin, top = top + 13.dp).graphicsLayer { alpha = backShown(); compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }.skipWhenClear { backShown() },
                 tint = backLabel.value, backdrop = haze,
             )
         }
@@ -506,7 +680,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         val menuRoute = menuEntry?.route as? Route.Collection
         if (menuRoute != null) Box(
             Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin)
-                .graphicsLayer { alpha = shownFor { it.route is Route.Collection }() },
+                .graphicsLayer { alpha = shownFor { it.route is Route.Collection }(); compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }.skipWhenClear { shownFor { it.route is Route.Collection }() },
         ) {
             var menu by remember { mutableStateOf(false) }
             GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true }, tint = topLabel.value, backdrop = haze)
@@ -524,14 +698,14 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom).graphicsLayer().drawBehind {
                 val t = transition
                 val c = if (t == null || overColor == null || underColor == null) pageColor ?: baseColor
-                else androidx.compose.ui.graphics.lerp(underColor.value ?: baseColor, overColor.value ?: baseColor, t.progress.value.coerceIn(0f, 1f))
+                else androidx.compose.ui.graphics.lerp(underColor.value ?: baseColor, overColor.value ?: baseColor, t.cover())
                 drawRect(Brush.verticalGradient(0.25f to Color.Transparent, 1f to c.copy(alpha = 0.5f)))
             },
         )
 
         // Teléfono: el ⋮ de las raíces queda fijo arriba a la derecha, a la altura del título grande.
         val rootMenu: (PageEntry) -> Boolean = { !it.nested && it.route != Route.Search }
-        if (!wide && anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 16.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)() }) {
+        if (!wide && anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 16.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)(); compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }.skipWhenClear { shownFor(rootMenu)() }) {
             ConnectionMenuButton(connection.endpoint.host, onForget, backdrop = haze, tint = { topLabel.value })
         }
 
@@ -549,7 +723,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                 WideTabBar(tab, pageBackdrop, select, label = wideLabel, container = wideVeil)
             }
             // Opciones de conexión arriba a la derecha en las raíces.
-            if (anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)() }) {
+            if (anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)(); compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }.skipWhenClear { shownFor(rootMenu)() }) {
                 ConnectionMenuButton(connection.endpoint.host, onForget, backdrop = haze)
             }
             if (showMini) WideMiniPlayer(
@@ -626,6 +800,30 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
 private val WideMiniHeight = 63.dp
 /** Miniatura de la carátula en el miniplayer de tablet. */
 private val WideThumbSize = 40.dp
+
+/**
+ * No dibuja el contenido mientras [alpha] es 0. Una pieza de vidrio invisible seguía en el árbol y rehacía
+ * sus capas (desenfoque y sombreado) en cada fotograma en que cambiaba la página de detrás.
+ */
+private fun Modifier.skipWhenClear(alpha: () -> Float): Modifier = drawWithContent { if (alpha() > 0f) drawContent() }
+
+/** Desenfoque máximo de la página de atrás durante el zoom de álbumes y playlists, y el intermedio. */
+private val ZoomBackBlur = 40.dp
+private val ZoomNearBlur = 12.dp
+
+/**
+ * Desenfoque progresivo de la página de atrás con dos copias de radio fijo: opacidad de cada una según el
+ * progreso del zoom. La suave entra en el primer 40 %; la fuerte, del 20 % al final. Mientras dura la
+ * transición las dos llevan una opacidad mínima invisible: así sus texturas se crean en los fotogramas de
+ * espera y no en mitad del movimiento.
+ */
+private object ZoomBlur {
+    private fun smooth(x: Float): Float { val t = x.coerceIn(0f, 1f); return t * t * (3f - 2f * t) }
+    fun far(p: Float) = smooth((p - 0.2f) / 0.8f).coerceAtLeast(0.01f)
+    fun near(p: Float) = if (far(p) >= 1f) 0f else smooth(p / 0.4f).coerceAtLeast(0.01f)
+    /** La página nítida ya no se ve. */
+    fun covered(p: Float) = smooth(p / 0.4f) >= 1f
+}
 
 private val AlwaysHidden: androidx.compose.runtime.State<Boolean> = androidx.compose.runtime.mutableStateOf(true)
 

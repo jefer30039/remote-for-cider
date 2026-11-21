@@ -198,8 +198,11 @@ fun ListRow(
 }
 
 @OptIn(ExperimentalFoundationApi::class)
-fun Modifier.combinedClickableCompat(onClick: (() -> Unit)?, onLongClick: (() -> Unit)? = null): Modifier =
+fun Modifier.combinedClickableCompat(onClick: (() -> Unit)?, onLongClick: (() -> Unit)? = null, ripple: Boolean = true): Modifier =
     if (onClick == null && onLongClick == null) this
+    // Sin onda ([ripple] = false): la onda del sistema se anima en el hilo de render y ensucia la página
+    // en cada fotograma mientras dura (ver ZoomAnchor.flying).
+    else if (!ripple) combinedClickable(interactionSource = null, indication = null, onClick = onClick ?: {}, onLongClick = onLongClick)
     else combinedClickable(onClick = onClick ?: {}, onLongClick = onLongClick)
 
 /**

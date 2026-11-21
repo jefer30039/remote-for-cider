@@ -36,6 +36,11 @@ sealed interface Route {
         val title: String,
         val subtitle: String?,
         val artwork: Artwork?,
+        /**
+         * Portada animada vertical (HLS) si quien abre la página ya la conoce (estanterías de Inicio): la
+         * cabecera nace con la forma del vídeo en vez de pasar de la tarjeta al vídeo a mitad del zoom.
+         */
+        val video: String? = null,
     ) : Route {
         val isPlaylist: Boolean get() = kind.endsWith("playlists")
 

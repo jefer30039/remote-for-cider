@@ -46,6 +46,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import coil3.request.crossfade
+import cider.remote.app.ui.rememberZoomSource
 import cider.remote.albumExtras
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.Text
@@ -304,6 +306,23 @@ fun Loading() {
  */
 private val recentTracks = android.util.LruCache<String, List<TrackRow>>(24)
 
+/** Portada animada y datos de catálogo de los álbumes y playlists recientes (clave `tipo/id`). */
+private val recentCovers = android.util.LruCache<String, AnimatedCover>(200)
+
+/**
+ * Pide de una vez la portada animada y el color de los álbumes y playlists de la biblioteca que se ven en
+ * una pantalla (Inicio): al abrir uno, la cabecera nace ya con su forma (vídeo o tarjeta) y su color, sin
+ * cambiar a mitad del zoom. Los del catálogo ya traen el vídeo en la estantería (`Route.Collection.video`).
+ */
+suspend fun prefetchLibraryCovers(api: cider.remote.CiderApi, routes: List<Route.Collection>) {
+    for (kind in listOf("library-albums", "library-playlists")) {
+        val ids = routes.filter { it.kind == kind && recentCovers.get("$kind/${it.id}") == null }.map { it.id }.distinct()
+        if (ids.isEmpty()) continue
+        runCatching { api.libraryCovers(kind.removePrefix("library-"), ids) }.getOrNull()
+            ?.forEach { (id, cover) -> recentCovers.put("$kind/$id", cover) }
+    }
+}
+
 /** Pie y estanterías de los álbumes recientes (por id de catálogo), para no esperar al volver a uno. */
 private val recentExtras = android.util.LruCache<String, cider.remote.AlbumExtras>(24)
 
@@ -319,11 +338,12 @@ fun AlbumTile(
     centered: Boolean = false,
     labelStyle: androidx.compose.ui.text.TextStyle? = null,
 ) {
+    val zoom = rememberZoomSource(6.dp)
     Column(
-        modifier.padding(bottom = 18.dp).combinedClickableCompat(onClick = onClick),
+        modifier.padding(bottom = 18.dp).then(if (circle) Modifier else zoom.tile).combinedClickableCompat(onClick = onClick, ripple = !zoom.flying),
         horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).then(if (circle) Modifier else zoom.cover)) {
             if (circle && artwork == null) Monogram(title, 400.dp, Modifier.fillMaxSize())
             else ArtworkImage(
                 artwork, 400.dp, Modifier.fillMaxSize(), px = 400,
@@ -844,8 +864,12 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
         // Si ya había lista y la consulta falla, se queda la que había.
         if (fresh.isSuccess || value == null) value = fresh
     }
-    val cover by produceState<AnimatedCover?>(null, route) {
-        value = runCatching { remote.api.animatedCover(route.kind, route.id) }.getOrNull()
+    // En memoria: al volver a abrir el álbum la cabecera sale ya con su forma (vídeo 3:4 o tarjeta) y no
+    // salta a mitad del zoom de entrada.
+    val cover by produceState(recentCovers.get(tracksKey), route) {
+        val fresh = runCatching { remote.api.animatedCover(route.kind, route.id) }.getOrNull()
+        fresh?.let { recentCovers.put(tracksKey, it) }
+        if (fresh != null || value == null) value = fresh
     }
     // Playlists: rasgos de audio de sus canciones (de la versión de catálogo; las de la biblioteca sin
     // catálogo no los tienen).
@@ -864,7 +888,7 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
         runCatching { remote.api.albumExtras(id) }.getOrNull()?.let { recentExtras.put(id, it); value = it }
     }
     // Color oficial de Apple (catálogo) si lo hay; si no, el color medio de la carátula.
-    val official = cover?.bgColor?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() }
+    val official = (cover?.bgColor ?: route.artwork?.bgColor)?.let { runCatching { Color(("ff$it").toLong(16).toInt()) }.getOrNull() }
     val bg = (official ?: rememberArtworkColor(route.artwork) ?: Color(0xFF2C2C2E)).pageBackground(dark = androidx.compose.foundation.isSystemInDarkTheme())
     val pageBackground = cider.remote.app.ui.LocalPageBackground.current
     androidx.compose.runtime.SideEffect { pageBackground.value = bg }
@@ -879,7 +903,9 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
     val faint = remember(bg) { cider.remote.app.ui.components.readableOn(bg, Color.White.copy(alpha = 0.45f), target = 3f) }
     val wideScreen = wide
     // En tablet la portada va en tarjeta (vídeo cuadrado); el vertical a todo el ancho sería enorme.
-    val tall = cover?.tall?.takeUnless { wideScreen }
+    // El vídeo que ya conoce quien abrió la página va primero: así no cambia de URL (ni se reinicia) al llegar
+    // la consulta.
+    val tall = (route.video ?: cover?.tall)?.takeUnless { wideScreen }
     // Con portada a todo el ancho, el título y la lista suben sobre el degradado.
     val heroOverlap = if (tall != null) (-64).dp else 0.dp
     val listOverlap = if (tall != null) (-40).dp else 0.dp
@@ -920,12 +946,23 @@ fun CollectionScreen(remote: CiderRemote, route: Route.Collection, contentPaddin
                         Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).dissolveOnScroll(headerScroll, threshold = 170.dp, fadeLength = 450.dp)) {
                             // Espera: el fotograma de muestra del vídeo (mismo encuadre y color que su primer
                             // fotograma, como en la hoja); sin él, la carátula fija.
+                            // Debajo, la carátula fija en el cuadrado de arriba (de donde sale el zoom; la de 400 px
+                            // de la tarjeta ya está en memoria); encima se funden el fotograma y luego el vídeo,
+                            // como en la hoja de reproducción. Nunca queda un hueco vacío.
                             val tallPreview = cover?.tallPreview
-                            AnimatedCover(tall, Modifier.fillMaxSize(), placeholderIsPreview = tallPreview != null) {
-                                AsyncImage(
-                                    model = tallPreview?.sized(1200, 1600) ?: route.artwork?.sized(1200), contentDescription = null,
-                                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-                                )
+                            AnimatedCover(tall, Modifier.fillMaxSize(), placeholderIsPreview = false) {
+                                Box(Modifier.fillMaxSize()) {
+                                    ArtworkImage(
+                                        route.artwork, 400.dp, Modifier.fillMaxWidth().aspectRatio(1f), shape = androidx.compose.ui.graphics.RectangleShape,
+                                        px = 400, preview = null,
+                                    )
+                                    if (tallPreview != null) AsyncImage(
+                                        model = coil3.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                            .data(tallPreview.sized(1200, 1600)).crossfade(250).build(),
+                                        contentDescription = null, contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize().graphicsLayer(colorFilter = cider.remote.app.ui.components.VideoColor.placeholder),
+                                    )
+                                }
                             }
                             Box(Modifier.fillMaxSize().graphicsLayer().drawBehind { drawRect(fadeInto(bgShown.value)) })
                         }

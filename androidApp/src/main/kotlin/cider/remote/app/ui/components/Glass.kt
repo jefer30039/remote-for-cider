@@ -467,6 +467,9 @@ private fun glassFadePiece(
  */
 fun Modifier.glassFadeVeil(tint: Color): Modifier = drawBehind { drawRect(fadeOut(tint, 0.96f, from = 0f, to = 1f)) }
 
+/** Igual, con el color leído al dibujar (cambia durante una transición entre páginas de distinto color). */
+fun Modifier.glassFadeVeil(tint: () -> Color): Modifier = drawBehind { drawRect(fadeOut(tint(), 0.96f, from = 0f, to = 1f)) }
+
 /**
  * Degradado vertical de [alpha] a 0 entre [from] y [to] (fracciones del alto) con
  * curva suave (smoothstep) en muchos tramos. Con pocos tramos rectos el ojo ve una

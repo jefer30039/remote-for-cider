@@ -86,6 +86,8 @@ import cider.remote.app.ui.library.PlayMenu
 import cider.remote.home
 import cider.remote.model.Artwork
 import coil3.compose.AsyncImage
+import cider.remote.app.ui.zoomSource
+import cider.remote.app.ui.rememberZoomSource
 import androidx.compose.foundation.text.appendInlineContent
 import cider.remote.app.ui.components.VideoPlayerDialog
 import kotlinx.coroutines.launch
@@ -143,6 +145,13 @@ private fun ShelvesScreen(
         snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
             if (scrolling) players.paused = true else { delay(600); players.paused = false }
         }
+    }
+    // Álbumes y playlists de la biblioteca en las estanterías ("Escuchado recientemente"): su vídeo y color,
+    // de una vez, para que al abrirlos la cabecera no cambie a mitad del zoom.
+    val loaded = shelves?.getOrNull()
+    LaunchedEffect(loaded) {
+        val routes = loaded.orEmpty().flatMap { it.items }.mapNotNull { it.toRoute() as? Route.Collection }
+        cider.remote.app.ui.library.prefetchLibraryCovers(remote.api, routes)
     }
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = contentPadding) {
         if (showTitle) item {
@@ -260,7 +269,7 @@ fun Shelf(
 
 fun HomeItem.toRoute(): Route? = when {
     type.endsWith("albums") || type.endsWith("playlists") ->
-        Route.Collection(kind = type, id = id, title = name, subtitle = subtitle.takeIf { type.endsWith("albums") }, artwork = artwork)
+        Route.Collection(kind = type, id = id, title = name, subtitle = subtitle.takeIf { type.endsWith("albums") }, artwork = artwork, video = tallVideo)
     type == "artists" -> Route.Artist(id, name, catalog = true)
     type == "library-artists" -> Route.Artist(id, name, catalog = false)
     else -> null
@@ -283,7 +292,7 @@ private fun HeroCard(item: HomeItem, playing: Boolean, players: CoverPlayerPool?
     val base = (tall ?: item.artwork)?.color() ?: Color(0xFF2C2C2E)
     val density = LocalDensity.current
     Box(
-        Modifier.width(HeroWidth).aspectRatio(3f / 4f).clip(RoundedCornerShape(10.dp))
+        Modifier.width(HeroWidth).aspectRatio(3f / 4f).zoomSource(10.dp).clip(RoundedCornerShape(10.dp))
             .background(if (tall != null) base else base.heroCardBackground())
             .combinedClickableCompat(onClick = onClick),
     ) {
@@ -398,16 +407,18 @@ private fun SuperHeroCard(item: HomeItem, onClick: () -> Unit) {
 private fun CoverTile(remote: CiderRemote, item: HomeItem, circle: Boolean, onClick: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val shape = if (circle) CircleShape else RoundedCornerShape(6.dp)
+    val zoom = rememberZoomSource(6.dp)
     Column(
-        Modifier.width(CoverSize).combinedClickableCompat(
+        Modifier.width(CoverSize).then(if (circle) Modifier else zoom.tile).combinedClickableCompat(
             onClick = onClick,
             onLongClick = if (item.type == "stations") null else ({ menu = true }),
+            ripple = !zoom.flying,
         ),
     ) {
         Box {
             AsyncImage(
                 model = item.artwork?.sized(400), contentDescription = null, contentScale = ContentScale.Crop,
-                modifier = Modifier.size(CoverSize).clip(shape).background(Apple.colors.fill),
+                modifier = Modifier.size(CoverSize).then(if (circle) Modifier else zoom.cover).clip(shape).background(Apple.colors.fill),
             )
             PlayMenu(remote, menu, { menu = false }, item.type, item.id)
         }
