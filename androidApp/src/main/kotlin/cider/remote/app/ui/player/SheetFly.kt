@@ -97,7 +97,10 @@ fun rememberSheetFly(
         val grow = if (pinLeft) 1f - (1f - (p / 0.63f).coerceAtMost(1f)).pow(1.3f) else p
         val width = lerp(thumb.width, finalWidth, grow)
         val scale = width / rest.width
-        val left = if (pinLeft) lerp(thumb.left, finalLeft, p)
+        // Pegada a la izquierda (portada animada): el borde izquierdo va al mismo ritmo que el ancho. Con el
+        // izquierdo a ritmo constante y el ancho ya casi completo a mitad de recorrido, la portada se salía por
+        // la derecha y luego volvía al centro.
+        val left = if (pinLeft) lerp(thumb.left, finalLeft, grow)
         else lerp(thumb.center.x, finalLeft + finalWidth / 2f, 1f - (1f - p) * (1f - p)) - width / 2f
         val top = lerp(thumb.top, finalTop, p)
         if (videoAspect == null) return Flight(scale, left, top, 0f, rest.height)
