@@ -247,9 +247,15 @@ class BackdropSampler internal constructor(private val window: android.view.Wind
     private var lastAt = 0L
     private var scheduled = false
 
-    /** Pide una lectura; como mucho una cada [MIN_INTERVAL_MS], con una lectura final pendiente si llegan más. */
+    /**
+     * Mientras devuelva true no se mide (la hoja de reproducción tapa las piezas: medir su fondo oscuro dejaba
+     * el vidrio oscuro sobre una página clara al cerrarla). Quien lo pone vuelve a pedir una lectura al acabar.
+     */
+    var blocked: () -> Boolean = { false }
+
     /** Pide una lectura; como mucho una cada [MIN_INTERVAL_MS], con una lectura final pendiente si llegan más. */
     fun request() {
+        if (blocked()) return
         if (busy) { pending = true; return }
         val wait = MIN_INTERVAL_MS - (android.os.SystemClock.uptimeMillis() - lastAt)
         if (wait > 0) {
@@ -269,7 +275,7 @@ class BackdropSampler internal constructor(private val window: android.view.Wind
         val bitmap = android.graphics.Bitmap.createBitmap(bw, bh, android.graphics.Bitmap.Config.ARGB_8888)
         runCatching {
             android.view.PixelCopy.request(w, bitmap, { result ->
-                if (result == android.view.PixelCopy.SUCCESS) {
+                if (result == android.view.PixelCopy.SUCCESS && !blocked()) {
                     val px = IntArray(bw * bh)
                     bitmap.getPixels(px, 0, bw, 0, 0, bw, bh)
                     for ((key, rect) in entries) {

@@ -226,6 +226,12 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     // Kyant en cada fotograma de la animación rehacía sus RenderEffect (5–10 ms de hilo UI).
     val themeDark = Apple.colors.isDark
     // Modo oscuro: textos y velo de la barra solo pasan a claro con vidrio casi blanco.
+    // Con la hoja de reproducción a la vista no se mide (su fondo oscuro no es lo que hay detrás de las
+    // piezas); al cerrarse del todo, se vuelve a medir.
+    sampler.blocked = { sheet.visible }
+    LaunchedEffect(sampler) {
+        androidx.compose.runtime.snapshotFlow { sheet.visible }.collect { visible -> if (!visible) { delay(120); sampler.request() } }
+    }
     sampler.darkBelow = if (themeDark) 0.62f else 0.42f
     sampler.lightAbove = if (themeDark) 0.75f else 0.5f
     // Un solo tono para todo el grupo inferior (barra o pastilla y miniplayer), decidido sobre la
@@ -508,13 +514,13 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                                 val raw = (progress?.value ?: 1f).coerceIn(-0.08f, 1f)
                                 val t = Zoom.shape(raw, transition!!.opening, transition.landing)
                                 val card = Zoom.card(zoom.live(), size, t, transition.opening, transition.pose, transition.poseAmount.value)
-                                val sc = (card.width / size.width).coerceAtLeast(0.01f)
+                                val (sc, visLeft) = zoomFit(card, size)
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                                 scaleX = sc; scaleY = sc
-                                translationX = card.left
+                                translationX = card.left - visLeft * sc
                                 translationY = card.top
                                 clip = true
-                                shape = ZoomClip(card.height / sc, Zoom.corner(zoom, t) / sc)
+                                shape = ZoomClip(visLeft, card.width / sc, card.height / sc, Zoom.corner(zoom, t) / sc)
                                 // Sombra de la tarjeta mientras no llena la pantalla; se va al llegar a la carátula.
                                 val lifted = card.width < size.width - 1f
                                 shadowElevation = if (lifted) 24.dp.toPx() / sc else 0f
@@ -612,13 +618,25 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                     val zoomArt = (entry.route as? Route.Collection)?.artwork
                     // Solo desde carátulas cuadradas (las tarjetas 3:4 de Inicio llevan otra imagen).
                     val squareSource = zoom != null && kotlin.math.abs(zoom.rect.width - zoom.rect.height) < 3f
+                    val squareSide = with(density) { minOf(rootSize.width, rootSize.height).toDp() }
                     if (role == 1 && squareSource && zoomArt != null) coil3.compose.AsyncImage(
                         model = zoomArt.sized(400), contentDescription = null,
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer {
+                        modifier = Modifier.align(Alignment.TopCenter).size(squareSide).graphicsLayer {
                             val p = progress?.value?.coerceIn(0f, 1f) ?: 1f
                             val k = (p / 0.35f).coerceIn(0f, 1f)
                             alpha = 1f - k * k * (3f - 2f * k)
+                            // Cuadrado del lado menor de la página, arriba y centrado: es lo que se ve con la tarjeta
+                            // sobre la carátula. Mientras la tarjeta cambia de forma se encoge a lo que se ve (entera y
+                            // centrada); con la tarjeta más ancha que alta (tablet en horizontal) se cortaba.
+                            val t = transition ?: return@graphicsLayer
+                            val raw = t.progress.value.coerceIn(-0.08f, 1f)
+                            val page = androidx.compose.ui.geometry.Size(rootSize.width.toFloat(), rootSize.height.toFloat())
+                            val card = Zoom.card(zoom!!.live(), page, Zoom.shape(raw, t.opening, t.landing), t.opening, t.pose, t.poseAmount.value)
+                            val (sc, _) = zoomFit(card, page)
+                            val fit = (minOf(card.width, card.height) / sc / size.width).coerceIn(0.01f, 1f)
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
+                            scaleX = fit; scaleY = fit
                             // Una sola imagen: la opacidad se aplica al dibujarla. Con capa aparte (lo normal con
                             // alfa < 1) era un búfer del ancho de la pantalla por fotograma, y otro por cada pieza
                             // de vidrio que lee la página.

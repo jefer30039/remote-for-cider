@@ -264,6 +264,13 @@ internal object Zoom {
     const val UnderScale = 0.914f
 
     fun card(from: ZoomFrom, page: Size, t: Float, opening: Boolean, pose: ZoomPose?, poseAmount: Float): Rect {
+        // Rebote del aterrizaje (t < 0): la carátula se encoge por igual alrededor de su centro. Extrapolar el
+        // rectángulo hacia la pantalla la achataba (el alto encoge más que el ancho) y volvía rectangular.
+        if (t < 0f) {
+            val k = 1f + t
+            val c = from.rect.center
+            return Rect(c.x - from.rect.width / 2f * k, c.y - from.rect.height / 2f * k, c.x + from.rect.width / 2f * k, c.y + from.rect.height / 2f * k)
+        }
         val full = Rect(0f, 0f, page.width, page.height)
         val to = if (pose == null || poseAmount <= 0f) full else {
             val r = pose.rect(page)
@@ -287,14 +294,30 @@ internal object Zoom {
     }
 }
 
-/** Recorte de la página que crece, en sus propias coordenadas (antes de escalarla): alto visible y radio. */
-internal class ZoomClip(private val height: Float, private val radius: Float) : Shape {
+/**
+ * Recorte de la página que crece, en sus propias coordenadas (antes de escalarla): la franja que se ve,
+ * desde [left] con ancho [width], de arriba a [height], con esquinas [radius].
+ */
+internal class ZoomClip(private val left: Float, private val width: Float, private val height: Float, private val radius: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val h = height.coerceIn(1f, size.height)
-        return Outline.Rounded(RoundRect(Rect(0f, 0f, size.width, h), CornerRadius(radius.coerceIn(0f, minOf(size.width, h) / 2f))))
+        val l = left.coerceIn(0f, size.width - 1f)
+        val w = width.coerceIn(1f, size.width - l)
+        return Outline.Rounded(RoundRect(Rect(l, 0f, l + w, h), CornerRadius(radius.coerceIn(0f, minOf(w, h) / 2f))))
     }
-    override fun equals(other: Any?) = other is ZoomClip && other.height == height && other.radius == radius
-    override fun hashCode() = 31 * height.hashCode() + radius.hashCode()
+    override fun equals(other: Any?) = other is ZoomClip && other.left == left && other.width == width && other.height == height && other.radius == radius
+    override fun hashCode() = ((31 * left.hashCode() + width.hashCode()) * 31 + height.hashCode()) * 31 + radius.hashCode()
+}
+
+/**
+ * Cómo se coloca la página dentro de la tarjeta [card] (iOS: la cubre, recortada y centrada a lo ancho).
+ * En el teléfono la página es siempre más alta que la tarjeta y esto es escalarla a su ancho; en una tablet
+ * en horizontal, escalada a lo ancho quedaba más baja que la carátula y la tarjeta volvía recortada.
+ * Devuelve la escala y el borde izquierdo de lo que se ve, en coordenadas de la página.
+ */
+internal fun zoomFit(card: Rect, page: Size): Pair<Float, Float> {
+    val sc = maxOf(card.width / page.width, card.height / page.height).coerceAtLeast(0.01f)
+    return sc to (page.width - card.width / sc) / 2f
 }
 
 /**
