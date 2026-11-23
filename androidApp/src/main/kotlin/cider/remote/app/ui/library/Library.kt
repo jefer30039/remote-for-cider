@@ -1151,13 +1151,17 @@ private fun Modifier.dissolveOnScroll(scroll: () -> Float, threshold: androidx.c
             translationY = s - minOf(s, thresholdPx) * 0.68f
             alpha = 1f - smooth((s - thresholdPx) / fadePx)
             // Sin búfer intermedio: con alfa < 1 la capa se pintaba en uno del tamaño de la carátula y el
-            // desenfoque que se derrama fuera quedaba cortado en recto.
-            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+            // desenfoque que se derrama fuera quedaba cortado en recto. En modo rendimiento (sin desenfoque) sí
+            // hace falta: con la opacidad aplicada a cada dibujo por separado, el degradado que funde la portada
+            // animada con el fondo dejaba ver el vídeo de debajo y su borde inferior salía cortado en recto.
+            compositingStrategy = if (cider.remote.app.ui.Appearance.lite) androidx.compose.ui.graphics.CompositingStrategy.Auto
+            else androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
         }
         .drawWithContent {
             val k = smooth((scroll() - thresholdPx) / rangePx)
             val radius = kotlin.math.round(k * maxBlurPx / 2f) * 2f
-            if (radius < 1f) { drawContent(); return@drawWithContent }
+            // Modo rendimiento: solo se funde, sin desenfoque.
+            if (radius < 1f || cider.remote.app.ui.Appearance.lite) { drawContent(); return@drawWithContent }
             val full = androidx.compose.ui.unit.IntSize(
                 kotlin.math.ceil(size.width + 2 * padPx).toInt(), kotlin.math.ceil(size.height + 2 * padPx).toInt(),
             )

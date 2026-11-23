@@ -273,7 +273,7 @@ fun NowPlayingSheet(remote: CiderRemote, state: PlayerState, sheet: SheetState, 
             remote, state, mode, onMode, background, dismissDrag, video, sheet, root, squareVideo = if (wide) cover?.square else null,
             squareRef = if (wide) squareRef else null,
             videoPreview = if (video != null) cover?.heroPreview() else null, squareTop = squareTop,
-            light = if (video != null) light else 0f,
+            light = if (video != null) light else 0f, under = under,
         )
         // Asa para indicar que se puede deslizar hacia abajo.
         Box(
@@ -354,6 +354,8 @@ private fun PhoneSheet(
     squareTop: Float? = null,
     /** Lo clara que es la parte baja del vídeo (0–1): oscurece más bajo los controles. */
     light: Float = 0f,
+    /** Color de la parte baja del vídeo (fondo en modo rendimiento, ver HeroArtwork). */
+    under: Color? = null,
 ) {
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val fade = Modifier.sheetFade(sheet)
@@ -391,7 +393,7 @@ private fun PhoneSheet(
             HeroArtwork(
                 state.track?.artwork, video, videoPreview, width * 4 / 3, dismissDrag,
                 rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp, videoAspect = 4f / 3f, squareTop = squareTop),
-                light = light,
+                light = light, under = under,
             )
         }
         Column(Modifier.fillMaxSize()) {
@@ -613,13 +615,24 @@ private val CompactHeaderHeight = 120.dp
  * (en arco, ver [BlurArcCenter]) y un velo oscuro crece desde el borde del vídeo hasta ~0,37 abajo (Apple no oscurece el vídeo).
  */
 @Composable
-private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, height: Dp, dragModifier: Modifier, fly: SheetFly, light: Float = 0f) {
+private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, height: Dp, dragModifier: Modifier, fly: SheetFly, light: Float = 0f, under: Color? = null) {
+    // Modo rendimiento: sin reflejo desenfocado; debajo, un degradado del color de la parte baja del vídeo
+    // (con el mismo ajuste que el reflejo) que se oscurece hacia abajo, y el vídeo se funde en ese color.
+    val lite = cider.remote.app.ui.Appearance.lite
+    val base = under ?: Color(0xFF242424)
     val videoLayer = rememberGraphicsLayer()
     val near = rememberGraphicsLayer()
     val far = rememberGraphicsLayer()
     Box(Modifier.fillMaxSize().then(fly.outer)) {
     Box(Modifier.fillMaxSize().then(fly.inner)) {
-        Spacer(
+        if (lite) Spacer(
+            Modifier.fillMaxSize().drawWithCache {
+                val vh = height.toPx()
+                val bottom = Color(base.red * 0.5f, base.green * 0.5f, base.blue * 0.5f)
+                val brush = Brush.verticalGradient(listOf(base, bottom), startY = vh, endY = size.height)
+                onDrawBehind { if (vh < size.height) drawRect(brush, topLeft = Offset(0f, vh), colorFilter = MirrorColor) }
+            },
+        ) else Spacer(
             Modifier.fillMaxSize().drawWithCache {
                 val k = MirrorScale
                 val w = size.width
@@ -680,6 +693,10 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
         )
         Box(
             Modifier.fillMaxWidth().height(height).then(dragModifier)
+                .then(if (lite) Modifier.drawWithCache {
+                    val fade = Brush.verticalGradient(0.72f to Color.Transparent, 1f to base, startY = 0f, endY = size.height)
+                    onDrawWithContent { drawContent(); drawRect(fade, colorFilter = MirrorColor) }
+                } else Modifier
                 .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
                 .drawWithCache {
                     // En arco: círculo centrado al 20 % del alto; en el eje se funde del 76 % al 92 % y en
@@ -695,7 +712,7 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
                         // Debajo está su versión desenfocada, alineada.
                         drawRect(mask, blendMode = BlendMode.DstIn)
                     }
-                },
+                }),
         ) {
             AnimatedCover(video, Modifier.fillMaxSize(), reference = preview) {
                 AsyncImage(

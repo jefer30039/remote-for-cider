@@ -242,7 +242,8 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
                     scaleY = s
                     transformOrigin = TransformOrigin(0f, 0f)
                     alpha = if (user) (if (abs(d) < 0.5f) 1f else 0.5f) else alphaFor(d)
-                    val blur = if (user) 0f else blurFor(d) * blurUnit
+                    // Modo rendimiento: las demás líneas solo se atenúan, sin desenfoque.
+                    val blur = if (user || cider.remote.app.ui.Appearance.lite) 0f else blurFor(d) * blurUnit
                     renderEffect = if (blur > 0.5f) BlurEffect(blur, blur, TileMode.Decal) else null
                 }
             }

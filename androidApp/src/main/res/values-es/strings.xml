@@ -206,4 +206,16 @@
     <string name="update_open_page">Ver en GitHub</string>
     <string name="search_recent">Búsquedas recientes</string>
     <string name="video_preview">Vista previa</string>
+    <string name="look_menu">Rendimiento</string>
+    <string name="look_full">completo</string>
+    <string name="look_performance">rendimiento</string>
+    <string name="look_full_on">Modo completo activado</string>
+    <string name="look_performance_on">Modo rendimiento activado</string>
+    <string name="look_full_body">Ves la app tal como se diseñó, con vidrio líquido y desenfoques. Si en este dispositivo no va fluida, cambia al modo rendimiento.</string>
+    <string name="look_performance_body">Se quitaron el vidrio líquido y los desenfoques para que la app vaya fluida. Así no es como se diseñó: si quieres verla completa, cambia al modo completo.</string>
+    <string name="look_suggested_this">Sugerido para este dispositivo.</string>
+    <string name="look_suggested_other">Para este dispositivo se sugiere el modo %1$s.</string>
+    <string name="look_change_later">Puedes cambiarlo cuando quieras en ⋮&#160;›&#160;Rendimiento.</string>
+    <string name="look_change">Cambiar</string>
+    <string name="look_accept">Aceptar</string>
 </resources>

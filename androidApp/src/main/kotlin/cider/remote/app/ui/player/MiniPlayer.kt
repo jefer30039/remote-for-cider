@@ -101,7 +101,7 @@ fun MiniPlayer(
     Row(
         modifier.fillMaxWidth()
             .then(
-                if (backdrop != null) Modifier.drawBackdrop(
+                if (backdrop != null && !cider.remote.app.ui.Appearance.lite) Modifier.drawBackdrop(
                     backdrop = backdrop,
                     shape = { Capsule() },
                     effects = {
@@ -217,15 +217,20 @@ fun WideMiniPlayer(
     val main: () -> Color = if (on) primary else off
     Row(
         modifier.height(63.dp)
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { Capsule() },
-                effects = {
-                    vibrancy()
-                    blur(8f.dp.toPx())
-                    lens(24f.dp.toPx(), 24f.dp.toPx())
-                },
-                onDrawSurface = { drawRect(veil()) },
+            .then(
+                // Modo rendimiento: superficie lisa del tema, como el miniplayer sin vidrio.
+                if (cider.remote.app.ui.Appearance.lite) Modifier.shadow(12.dp, Capsule(), ambientColor = Color.Black.copy(alpha = 0.4f))
+                    .clip(Capsule()).background(Apple.colors.miniPlayer).border(0.5.dp, Apple.colors.circleBorder, Capsule())
+                else Modifier.drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { Capsule() },
+                    effects = {
+                        vibrancy()
+                        blur(8f.dp.toPx())
+                        lens(24f.dp.toPx(), 24f.dp.toPx())
+                    },
+                    onDrawSurface = { drawRect(veil()) },
+                ),
             )
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -20,6 +20,7 @@ class CiderRemoteApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        cider.remote.app.ui.Appearance.init(this)
         // El token de versiones anteriores estaba en claro: se cifra con Keystore (ConnectionStore).
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
         kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { connections.migrate() } }

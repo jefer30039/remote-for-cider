@@ -162,13 +162,15 @@ fun GlassMenu(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val glass = LocalGlassBackdrop.current
-    val backdrop = glass?.let { rememberSharedBackdrop(it) }
+    // Modo rendimiento: color liso del tema.
+    val backdrop = glass?.takeUnless { cider.remote.app.ui.Appearance.lite }?.let { rememberSharedBackdrop(it) }
     // Mismo velo que la barra de Kyant.
     val surface = if (Apple.colors.isDark) Color(0xFF121212).copy(alpha = 0.4f) else Color(0xFFFAFAFA).copy(alpha = 0.4f)
     DropdownMenu(
         expanded, onDismissRequest = onDismiss, offset = offset,
         shape = RoundedCornerShape(22.dp), shadowElevation = 12.dp,
-        containerColor = if (backdrop != null) Color.Transparent else Apple.colors.bar,
+        // Modo rendimiento: opaco (sin desenfoque, el texto de detrás se leía a través del menú).
+        containerColor = if (backdrop != null) Color.Transparent else if (cider.remote.app.ui.Appearance.lite) Apple.colors.bar.copy(alpha = 1f) else Apple.colors.bar,
         modifier = Modifier.width(width).then(
             if (backdrop != null) Modifier.drawBackdrop(
                 backdrop = backdrop,

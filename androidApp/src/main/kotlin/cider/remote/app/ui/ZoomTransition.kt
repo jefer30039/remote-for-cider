@@ -399,7 +399,7 @@ internal fun rememberZoomBackdrop(): ZoomBackdrop {
 }
 
 /** Sobre el contenido de la página de atrás: además de dibujarla, guarda sus copias desenfocadas. */
-internal fun Modifier.zoomBackdropSource(backdrop: ZoomBackdrop, nearRadius: Dp, farRadius: Dp, background: Color, hole: ZoomFrom?): Modifier {
+internal fun Modifier.zoomBackdropSource(backdrop: ZoomBackdrop, nearRadius: Dp, farRadius: Dp, background: Color, hole: ZoomFrom?, blur: Boolean = true): Modifier {
     return onPlaced { hole?.anchor?.page = it }.drawWithContent {
         drawContent()
         // La carátula de origen está volando (es la página que crece): su sitio queda vacío, como en iOS.
@@ -411,7 +411,7 @@ internal fun Modifier.zoomBackdropSource(backdrop: ZoomBackdrop, nearRadius: Dp,
             else -> anchor.local?.let { hole.copy(rect = it) }
         }
         if (at != null) zoomHole(at, background)
-        with(backdrop) { capture(nearRadius.toPx(), farRadius.toPx(), background, at) }
+        if (blur) with(backdrop) { capture(nearRadius.toPx(), farRadius.toPx(), background, at) }
     }
 }
 

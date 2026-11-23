@@ -119,6 +119,7 @@ import cider.remote.app.ui.components.LocalPageHidden
 import cider.remote.app.ui.components.glassFadeVeil
 import androidx.compose.runtime.CompositionLocalProvider
 import cider.remote.app.ui.components.LiquidGlassSupported
+import cider.remote.app.ui.components.AppearanceDialog
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.animateColorAsState
@@ -228,7 +229,9 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     // Modo oscuro: textos y velo de la barra solo pasan a claro con vidrio casi blanco.
     // Con la hoja de reproducción a la vista no se mide (su fondo oscuro no es lo que hay detrás de las
     // piezas); al cerrarse del todo, se vuelve a medir.
-    sampler.blocked = { sheet.visible }
+    // Modo rendimiento: las piezas son lisas y del tema, no hay nada que medir.
+    sampler.blocked = { Appearance.lite || sheet.visible }
+    val lite = Appearance.lite
     LaunchedEffect(sampler) {
         androidx.compose.runtime.snapshotFlow { sheet.visible }.collect { visible -> if (!visible) { delay(120); sampler.request() } }
     }
@@ -236,13 +239,13 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     sampler.lightAbove = if (themeDark) 0.75f else 0.5f
     // Un solo tono para todo el grupo inferior (barra o pastilla y miniplayer), decidido sobre la
     // franja entera: con tonos distintos a la vez se veía raro.
-    val darkBottom = sampler.dark["abajo"] ?: themeDark
+    val darkBottom = (if (lite) null else sampler.dark["abajo"]) ?: themeDark
     val darkMini = darkBottom
     val darkBar = darkBottom
-    val darkTop = sampler.dark["arriba"] ?: themeDark
-    val darkBack = sampler.dark["volver"] ?: themeDark
+    val darkTop = (if (lite) null else sampler.dark["arriba"]) ?: themeDark
+    val darkBack = (if (lite) null else sampler.dark["volver"]) ?: themeDark
     // Tablet: barra de pestañas superior, con su propia zona de muestreo.
-    val darkWideBar = sampler.dark["barra"] ?: themeDark
+    val darkWideBar = (if (lite) null else sampler.dark["barra"]) ?: themeDark
     val wideBarLabel = animateColorAsState(if (darkWideBar) Color.White else Color.Black, tween(250), label = "textoBarraArriba")
     val wideBarVeil = androidx.compose.runtime.rememberUpdatedState(if (darkWideBar) Color(0xFF121212).copy(alpha = 0.4f) else Color(0xFFFAFAFA).copy(alpha = 0.4f))
     val backLabel = animateColorAsState(if (darkBack) Color.White else Color.Black, tween(250), label = "textoVolver")
@@ -577,14 +580,24 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                         flyingAnchor?.flying = true
                         onDispose { flyingAnchor?.flying = false }
                     }
-                    val backdropSource = remember(backdrop, underColor, zoom) {
-                        Modifier.zoomBackdropSource(backdrop, ZoomNearBlur, ZoomBackBlur, underColor, zoom)
+                    // Modo rendimiento: la de atrás se aleja nítida (sin copias desenfocadas); el hueco de la
+                    // carátula y el marco del color de la página se conservan.
+                    val zoomBlurred = zoomUnder && !lite
+                    val backdropSource = remember(backdrop, underColor, zoom, lite) {
+                        Modifier.zoomBackdropSource(backdrop, ZoomNearBlur, ZoomBackBlur, underColor, zoom, blur = !lite)
                     }
+                    if (zoomUnder && lite) Box(
+                        Modifier.fillMaxSize().drawBehind {
+                            val mx = size.width * ZoomBackdrop.Margin; val my = size.height * ZoomBackdrop.Margin
+                            drawRect(underColor, Offset(-mx, -my), androidx.compose.ui.geometry.Size(size.width + 2 * mx, size.height + 2 * my))
+                        },
+                    )
                     Box(
                         Modifier.fillMaxSize()
                             .then(
-                                if (zoomUnder) Modifier.graphicsLayer { alpha = if (ZoomBlur.covered(transition?.cover() ?: 1f)) 0f else 1f }
+                                if (zoomBlurred) Modifier.graphicsLayer { alpha = if (ZoomBlur.covered(transition?.cover() ?: 1f)) 0f else 1f }
                                     .then(backdropSource)
+                                else if (zoomUnder) backdropSource
                                 else Modifier,
                             )
                             .background(Apple.colors.background),
@@ -643,7 +656,7 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                             compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
                         },
                     )
-                    if (zoomUnder) {
+                    if (zoomBlurred) {
                         Box(Modifier.fillMaxSize().zoomBackdropLevel(backdrop, far = false, nearAlpha))
                         Box(Modifier.fillMaxSize().zoomBackdropLevel(backdrop, far = true, farAlpha))
                     }
@@ -811,6 +824,12 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         if (sheetVisible && hasTrack) CompositionLocalProvider(LocalOpenRoute provides { r -> sheet.close(); pages.push(r) }, LocalGlassBackdrop provides haze) {
             NowPlayingSheet(remote, state, sheet, mode = sheetMode, onMode = { sheetMode = it })
         }
+
+        // Modo de la app (Appearance): la primera vez, un momento después de entrar (que se vea la app
+        // detrás); después, desde ⋮ › Rendimiento. Encima de todo, también de la hoja.
+        var firstLook by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { if (!Appearance.chosen) { delay(1200); firstLook = true } }
+        if ((firstLook && !Appearance.chosen) || Appearance.chooserOpen) AppearanceDialog(pageBackdrop)
     }
     }
 }

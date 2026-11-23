@@ -33,6 +33,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.border
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -91,6 +95,10 @@ fun LiquidBottomTabs(
     val containerColor: () -> Color = containerColor ?: { themeContainer }
 
     val tabsBackdrop = rememberLayerBackdrop()
+    // Modo rendimiento (Appearance): cápsula lisa del tema y lente sin refracción ni desenfoque; la lente
+    // sigue leyendo la copia teñida de las pestañas para que la activa salga en el acento.
+    val lite = cider.remote.app.ui.Appearance.lite
+    val flat = cider.remote.app.ui.Apple.colors.bar
 
     // Ancho medido en un estado, no BoxWithConstraints: al minimizar la barra (iOS 26) el ancho
     // cambia en cada fotograma y BoxWithConstraints recomponía toda la barra (22 ms por fotograma).
@@ -187,7 +195,9 @@ fun LiquidBottomTabs(
                 .graphicsLayer {
                     translationX = panelOffset
                 }
-                .drawBackdrop(
+                .then(if (lite) Modifier.shadow(12f.dp, Capsule(), ambientColor = Color.Black.copy(alpha = 0.4f))
+                    .clip(Capsule()).drawBehind { drawRect(flat) }.border(0.5f.dp, cider.remote.app.ui.Apple.colors.circleBorder, Capsule())
+                else Modifier.drawBackdrop(
                     backdrop = backdrop,
                     shape = { Capsule() },
                     effects = {
@@ -202,7 +212,7 @@ fun LiquidBottomTabs(
                         scaleY = scale
                     },
                     onDrawSurface = { drawRect(containerColor()) }
-                )
+                ))
                 .then(interactiveHighlight.modifier)
                 .compactHeight(barHeight, compactProgress)
                 .fillMaxWidth()
@@ -224,7 +234,7 @@ fun LiquidBottomTabs(
                     .graphicsLayer {
                         translationX = panelOffset
                     }
-                    .drawBackdrop(
+                    .then(if (lite) Modifier.drawBehind { drawRect(flat) } else Modifier.drawBackdrop(
                         backdrop = backdrop,
                         shape = { Capsule() },
                         effects = {
@@ -241,7 +251,7 @@ fun LiquidBottomTabs(
                             Highlight.Default.copy(alpha = progress)
                         },
                         onDrawSurface = { drawRect(containerColor()) }
-                    )
+                    ))
                     .then(interactiveHighlight.modifier)
                     .compactHeight(lensHeight, compactProgress)
                     .fillMaxWidth()
@@ -265,11 +275,11 @@ fun LiquidBottomTabs(
                 .then(interactiveHighlight.gestureModifier)
                 .then(dampedDragAnimation.modifier)
                 .drawBackdrop(
-                    backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
+                    backdrop = if (lite) tabsBackdrop else rememberCombinedBackdrop(backdrop, tabsBackdrop),
                     shape = { Capsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
-                        lens(
+                        if (!lite) lens(
                             10f.dp.toPx() * progress,
                             14f.dp.toPx() * progress,
                             chromaticAberration = true

@@ -89,6 +89,8 @@ fun rememberGlassBackdrop(): GlassBackdrop {
  */
 @Composable
 fun Modifier.glassSource(backdrop: GlassBackdrop): Modifier {
+    // Modo rendimiento: ninguna pieza lee la página (todas son lisas), así que no se graba.
+    if (cider.remote.app.ui.Appearance.lite) return this
     if (!LiquidGlassSupported) return hazeSource(backdrop.haze)
     return this.then(remember(backdrop) {
         Modifier.onGloballyPositioned { backdrop.origin = it.positionOnScreen(); backdrop.size = it.size }
@@ -178,6 +180,7 @@ data class GlassStyle(
 @Composable
 fun Modifier.glass(backdrop: GlassBackdrop, corner: Dp = 1000.dp, style: GlassStyle? = null, over: GlassBackdrop? = null): Modifier {
     val dark = Apple.colors.isDark
+    if (cider.remote.app.ui.Appearance.lite) { val flat = Apple.colors.bar; return drawBehind { drawRect(flat) } }
     if (!LiquidGlassSupported) return hazeGlass(backdrop.haze, dark)
     val chosen = style ?: if (dark) GlassStyle.Dark else GlassStyle.Light
     val blurred = rememberGraphicsLayer()
@@ -404,7 +407,7 @@ private fun Modifier.hazeGlass(state: HazeState, dark: Boolean): Modifier {
 /** Contorno fino de las piezas de vidrio; con el shader sobra (ya dibuja su propio borde). */
 @Composable
 fun Modifier.glassEdge(shape: androidx.compose.ui.graphics.Shape): Modifier =
-    if (LiquidGlassSupported) this else border(0.5.dp, Apple.colors.circleBorder, shape)
+    if (LiquidGlassSupported && !cider.remote.app.ui.Appearance.lite) this else border(0.5.dp, Apple.colors.circleBorder, shape)
 
 /**
  * Borde de desplazamiento de iOS 26 bajo la barra de estado: el contenido se funde
@@ -416,6 +419,8 @@ fun Modifier.glassFade(backdrop: GlassBackdrop, tint: Color, withVeil: Boolean =
     // Velo con curva suave: casi opaco arriba, nada abajo. Sin él ([withVeil] = false) cuando el
     // velo va dentro de la página (glassFadeVeil): así las piezas de vidrio de arriba lo ven.
     val veil = if (withVeil) fadeOut(tint, 0.96f, from = 0f, to = 1f) else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+    // Modo rendimiento: solo el velo (sin los dos desenfoques).
+    if (cider.remote.app.ui.Appearance.lite) return if (withVeil) drawBehind { drawRect(veil) } else this
     if (!LiquidGlassSupported) return drawBehind { drawRect(fadeOut(tint, 0.96f, from = 0f, to = 1f)) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val soft = remember(density) { blurEffect(with(density) { 6.dp.toPx() }) }
@@ -507,7 +512,8 @@ fun GlassCircleButton(
     tint: Color = Apple.colors.label,
     backdrop: GlassBackdrop? = LocalGlassBackdrop.current,
 ) {
-    if (backdrop == null) {
+    // Sin fondo de vidrio o en modo rendimiento: círculo liso.
+    if (backdrop == null || cider.remote.app.ui.Appearance.lite) {
         CircleButton(icon, contentDescription, onClick, modifier, background = Apple.colors.circle.copy(alpha = 0.85f), tint = tint)
         return
     }

@@ -204,4 +204,16 @@
     <string name="update_open_page">View on GitHub</string>
     <string name="search_recent">Recently Searched</string>
     <string name="video_preview">Preview</string>
+    <string name="look_menu">Performance</string>
+    <string name="look_full">full</string>
+    <string name="look_performance">performance</string>
+    <string name="look_full_on">Full mode on</string>
+    <string name="look_performance_on">Performance mode on</string>
+    <string name="look_full_body">You\'re seeing the app as it was designed, with liquid glass and blur. If it doesn\'t feel smooth on this device, switch to performance mode.</string>
+    <string name="look_performance_body">Liquid glass and blur are turned off so the app runs smoothly. This isn\'t how the app was designed: switch to full mode to see it as intended.</string>
+    <string name="look_suggested_this">Suggested for this device.</string>
+    <string name="look_suggested_other">For this device we suggest %1$s mode.</string>
+    <string name="look_change_later">You can change it anytime in ⋮&#160;›&#160;Performance.</string>
+    <string name="look_change">Change</string>
+    <string name="look_accept">OK</string>
 </resources>

@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.Row
@@ -96,6 +97,11 @@ fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBack
                     onClick = { menu = false; updating = update },
                 )
             }
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.look_menu)) },
+                leadingIcon = { Icon(Icons.Outlined.Speed, null) },
+                onClick = { menu = false; cider.remote.app.ui.Appearance.chooserOpen = true },
+            )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.about_title)) },
                 leadingIcon = { Icon(Icons.Outlined.Info, null) },
