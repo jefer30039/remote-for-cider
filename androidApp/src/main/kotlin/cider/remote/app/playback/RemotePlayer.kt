@@ -147,9 +147,19 @@ class RemotePlayer(
     }
 
     override fun handleSetDeviceVolume(deviceVolume: Int, flags: Int): ListenableFuture<*> {
+        // El panel de volumen de HyperOS, al aparecer por una tecla, anima su barra desde el último valor que
+        // tenía guardado hasta el nuevo y manda cada paso de esa animación como si se arrastrara: con un valor
+        // viejo, subir el volumen podía acabar bajándolo (46 % → tecla arriba → 41 %, visto en el registro de
+        // MiuiSystemUI). Tras una tecla se ignoran esos valores durante la animación.
+        if (lastKeyStep?.let { it.elapsedNow() < PANEL_ECHO_WINDOW } == true) return Futures.immediateVoidFuture()
         remote?.setVolume(deviceVolume.coerceIn(0, MAX_VOLUME) / MAX_VOLUME.toDouble())
         return Futures.immediateVoidFuture()
     }
+
+    /** Última pulsación de una tecla de volumen (ver [handleSetDeviceVolume]). */
+    private var lastKeyStep: kotlin.time.TimeSource.Monotonic.ValueTimeMark? = null
+    /** Volumen pedido con la última tecla: la siguiente parte de él aunque Cider aún no lo haya confirmado. */
+    private var pendingVolume: Int? = null
 
     override fun handleIncreaseDeviceVolume(flags: Int): ListenableFuture<*> = stepVolume(+1)
 
@@ -157,8 +167,13 @@ class RemotePlayer(
 
     private fun stepVolume(direction: Int): ListenableFuture<*> {
         val r = remote ?: return Futures.immediateVoidFuture()
-        val now = ((current?.volume ?: 0.0) * MAX_VOLUME).roundToInt()
-        r.setVolume((now + direction * VOLUME_STEP).coerceIn(0, MAX_VOLUME) / MAX_VOLUME.toDouble())
+        val confirmed = ((current?.volume ?: 0.0) * MAX_VOLUME).roundToInt()
+        // Pulsaciones seguidas: desde lo que se pidió, no desde lo que Cider ha confirmado hasta ahora.
+        val now = pendingVolume?.takeIf { lastKeyStep?.let { it.elapsedNow() < PANEL_ECHO_WINDOW } == true } ?: confirmed
+        val next = (now + direction * VOLUME_STEP).coerceIn(0, MAX_VOLUME)
+        lastKeyStep = kotlin.time.TimeSource.Monotonic.markNow()
+        pendingVolume = next
+        r.setVolume(next / MAX_VOLUME.toDouble())
         return Futures.immediateVoidFuture()
     }
 
@@ -176,6 +191,8 @@ class RemotePlayer(
         val AUTO_PAUSE_WINDOW = 1500.milliseconds
         const val MAX_VOLUME = 100
         const val VOLUME_STEP = 5
+        /** Lo que dura la animación de la barra del panel de volumen de HyperOS tras una tecla. */
+        val PANEL_ECHO_WINDOW = 900.milliseconds
 
         val DEVICE_INFO: DeviceInfo = DeviceInfo.Builder(DeviceInfo.PLAYBACK_TYPE_REMOTE)
             .setMinVolume(0)
