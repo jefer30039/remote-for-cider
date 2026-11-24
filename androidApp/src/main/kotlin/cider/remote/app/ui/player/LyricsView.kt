@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.CircularProgressIndicator
@@ -93,16 +94,22 @@ fun LyricsView(
         when (val l = load) {
             LyricsLoad.Loading -> CircularProgressIndicator(color = Color.White.copy(alpha = 0.6f), strokeWidth = 2.dp)
             LyricsLoad.None -> Text(stringResource(R.string.lyrics_none), style = Apple.type.headline, color = Color.White.copy(alpha = 0.62f))
-            is LyricsLoad.Ready -> if (l.lyrics.synced) SyncedLyrics(remote, state, l.lyrics, anchorTop) else PlainLyrics(l.lyrics)
+            is LyricsLoad.Ready -> if (l.lyrics.synced) SyncedLyrics(remote, state, l.lyrics, anchorTop) else PlainLyrics(l.lyrics, anchorTop)
         }
     }
 }
 
-/** Letra sin tiempos: lista desplazable, todo en blanco. */
+/**
+ * Letra sin tiempos: lista desplazable, todo en blanco. Empieza donde va la línea activa de las sincronizadas
+ * ([anchorTop], justo bajo la cabecera): la vista llega por detrás de la cabecera y, con el margen de antes
+ * (8 dp), la primera línea quedaba tapada por la carátula y el título. Al desplazarla pasa por debajo y se funde.
+ */
 @Composable
-private fun PlainLyrics(lyrics: Lyrics) {
+private fun PlainLyrics(lyrics: Lyrics, anchorTop: androidx.compose.ui.unit.Dp?) {
     val style = lyricStyle()
-    LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 240.dp), modifier = Modifier.fillMaxWidth()) {
+    // La primera línea lleva 9 dp de margen propio arriba.
+    val top = anchorTop?.let { (it - 9.dp).coerceAtLeast(8.dp) } ?: 8.dp
+    LazyColumn(contentPadding = PaddingValues(top = top, bottom = 240.dp), modifier = Modifier.fillMaxSize()) {
         items(lyrics.lines) { line ->
             BasicText(line.text, style = style.copy(color = Color.White), modifier = Modifier.fillMaxWidth().padding(horizontal = LyricsSidePadding, vertical = 9.dp))
         }
