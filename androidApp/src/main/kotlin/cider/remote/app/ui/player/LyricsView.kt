@@ -45,6 +45,11 @@ import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
@@ -186,10 +191,36 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
             clock.doubleValue = progress.positionNow()
         }
     }
-    // Solo cambia (y recompone) al pasar de línea.
-    val active by remember(lyrics) { derivedStateOf { lyrics.indexAt(clock.doubleValue + Lead).coerceAtLeast(0) } }
-    val focus = remember(lyrics) { Animatable(active.toFloat()) }
+    // Líneas y pausas (los "…" de Cider). Solo cambia (y recompone) al pasar de elemento.
+    val items = remember(lyrics) { lyricItems(lyrics) }
+    val active by remember(items) {
+        derivedStateOf {
+            val t = clock.doubleValue
+            var k = 0
+            for (i in items.indices) { if (items[i].activeFrom <= t) k = i else break }
+            k
+        }
+    }
+    val focus = remember(items) { Animatable(active.toFloat()) }
     LaunchedEffect(active) { focus.animateTo(active.toFloat(), spring(dampingRatio = 1f, stiffness = 110f)) }
+    // Hueco de cada pausa en la lista (Cider: se despliega en 0,8 s con salida exponencial al empezar y se
+    // pliega en los últimos 0,6 s). Plegada no ocupa sitio ni cuenta como elemento para la distancia.
+    val reveals = remember(items) { items.indices.filter { items[it] is GapItem }.associateWith { Animatable(0f) } }
+    LaunchedEffect(active, reveals) {
+        reveals.forEach { (i, a) ->
+            launch {
+                val gap = items[i] as GapItem
+                if (i == active) {
+                    launch { a.animateTo(1f, androidx.compose.animation.core.tween(800, easing = ExpoOut)) }
+                    val untilFold = gap.end - 0.6 - clock.doubleValue
+                    if (untilFold > 0) delay((untilFold * 1000).toLong())
+                    a.animateTo(0f, androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.LinearEasing))
+                } else if (a.value > 0f) {
+                    a.animateTo(0f, androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.LinearEasing))
+                }
+            }
+        }
+    }
 
     // Arrastre manual: congela el foco y desplaza; a los 3 s sin tocar vuelve a seguir la canción.
     val scope = rememberCoroutineScope()
@@ -197,7 +228,7 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
     var userMode by remember { mutableStateOf(false) }
     val frozenFocus = remember { mutableFloatStateOf(0f) }
     var touches by remember { mutableIntStateOf(0) }
-    val metrics = remember(lyrics, anchorTop) { LineMetrics(lyrics.lines.size, byTop = anchorTop != null) }
+    val metrics = remember(items, anchorTop) { LineMetrics(items.size, byTop = anchorTop != null) }
     val dragState = rememberDraggableState { delta -> scope.launch { manual.snapTo(manual.value + delta) } }
     LaunchedEffect(userMode, touches) {
         if (!userMode) return@LaunchedEffect
@@ -219,11 +250,14 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
 
     Layout(
         content = {
-            lyrics.lines.forEachIndexed { i, line ->
-                Box(
-                    Modifier.clickable(interactionSource = null, indication = null) { remote.seek(line.startSec) },
-                ) {
-                    LyricText(line, active = i == active, clock = clock, style = style)
+            items.forEachIndexed { i, item ->
+                when (item) {
+                    is LineItem -> Box(
+                        Modifier.clickable(interactionSource = null, indication = null) { remote.seek(item.line.startSec) },
+                    ) {
+                        LyricText(item.line, phase = if (i == active) 0 else if (i < active) -1 else 1, clock = clock, style = style)
+                    }
+                    is GapItem -> InterludeDots(item, clock, style)
                 }
             }
         },
@@ -244,13 +278,22 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
         layout(width, height) {
             val user = userMode
             val f = if (user) frozenFocus.floatValue else focus.value
+            // Posición de cada elemento contando las pausas solo por lo desplegadas que están: con la pausa
+            // plegada, la línea de después queda a distancia 1 de la de antes (su opacidad y escala de siempre).
+            var acc = 0f
+            for (i in placeables.indices) {
+                metrics.rank[i] = acc
+                acc += reveals[i]?.value ?: 1f
+            }
+            val rf = metrics.rankAt(f)
             // Alturas con su escala de ahora: la línea que crece empuja a las de abajo.
             var y = 0f
             for (i in placeables.indices) {
-                val s = scaleFor(i - f)
+                val s = scaleFor(metrics.rank[i] - rf)
+                val r = reveals[i]?.value ?: 1f
                 metrics.top[i] = y
-                metrics.height[i] = placeables[i].height * s
-                y += (placeables[i].height + gapPx) * s
+                metrics.height[i] = placeables[i].height * s * r
+                y += (placeables[i].height + gapPx) * s * r
             }
             // Teléfono: la parte de arriba de la activa a distancia fija del borde (no se mueve si la
             // zona crece al ocultarse los controles); tablet: su centro al 38 % del alto.
@@ -258,8 +301,8 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
             for (i in placeables.indices) {
                 val top = metrics.top[i] + offset
                 // Fuera de la vista no se coloca (ni se dibuja).
-                if (top > height || top + metrics.height[i] < 0f) continue
-                val d = i - f
+                if (top > height || top + metrics.height[i] < 0f || metrics.height[i] <= 0f) continue
+                val d = metrics.rank[i] - rf
                 placeables[i].placeWithLayer(sidePx, top.toInt()) {
                     val s = scaleFor(d)
                     scaleX = s
@@ -279,6 +322,15 @@ private fun SyncedLyrics(remote: CiderRemote, state: PlayerState, lyrics: Lyrics
 private class LineMetrics(n: Int, private val byTop: Boolean) {
     val top = FloatArray(n)
     val height = FloatArray(n)
+    /** Posición de cada elemento contando las pausas por lo desplegadas que están. */
+    val rank = FloatArray(n)
+
+    fun rankAt(f: Float): Float {
+        if (rank.isEmpty()) return 0f
+        val i = floor(f).toInt().coerceIn(0, rank.size - 1)
+        val j = (i + 1).coerceAtMost(rank.size - 1)
+        return rank[i] + (rank[j] - rank[i]) * (f - i).coerceIn(0f, 1f)
+    }
 
     /** Punto de anclaje (arriba o centro) de la "línea" [f] (fraccionaria: entre dos líneas, interpolado). */
     fun anchorAt(f: Float): Float {
@@ -316,7 +368,8 @@ private fun blurFor(d: Float): Float = when {
  * línea se repinta en cada fotograma.
  */
 @Composable
-private fun LyricText(line: LyricLine, active: Boolean, clock: State<Double>, style: androidx.compose.ui.text.TextStyle) {
+private fun LyricText(line: LyricLine, phase: Int, clock: State<Double>, style: androidx.compose.ui.text.TextStyle) {
+    val active = phase == 0
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     // Posición de cada sílaba en el texto de la línea (el analizador lo arma con ellas).
     val ranges = remember(line) {
@@ -327,16 +380,24 @@ private fun LyricText(line: LyricLine, active: Boolean, clock: State<Double>, st
             r
         }
     }
-    val edge = with(androidx.compose.ui.platform.LocalDensity.current) { WipeEdge.toPx() }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val edge = with(density) { WipeEdge.toPx() }
+    val fontPx = with(density) { style.fontSize.toPx() }
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer(cacheSize = 0)
+    val fx = remember(line, layout) { layout?.let { SyllableFx(line, ranges, it, measurer, style, fontPx) } }
+    val lite = cider.remote.app.ui.Appearance.lite
     BasicText(
         line.text,
         style = style.copy(color = Color.White),
         onTextLayout = { layout = it },
         modifier = Modifier.drawWithContent {
             val l = layout
+            // Ya cantada: se queda alzada (Cider, `clp-cold-sung`) mientras se desvanece.
+            if (phase < 0 && fx != null) { val content = this; translate(0f, -fx.liftPx) { content.drawContent() }; return@drawWithContent }
             if (!active || l == null) { drawContent(); return@drawWithContent }
             val t = clock.value
-            drawText(l, color = Color.White.copy(alpha = Unsung))
+            fun pass(color: Color, glow: Boolean) = if (fx == null) drawText(l, color = color) else with(fx) { draw(l, t, color, glow && !lite) }
+            pass(Color.White.copy(alpha = Unsung), glow = false)
             // Terminada (o aún sin empezar): toda atenuada, como en la referencia antes de subir.
             if (t < line.startSec || t > line.endSec + 0.15) return@drawWithContent
             // Fila y posición horizontal hasta donde se ha cantado.
@@ -361,8 +422,8 @@ private fun LyricText(line: LyricLine, active: Boolean, clock: State<Double>, st
             drawIntoCanvas { canvas ->
                 // El texto entero en blanco y luego se borra lo no cantado (el modo de mezcla del
                 // texto no se respeta en todos los dispositivos; el de los rectángulos, sí).
-                canvas.saveLayer(Rect(Offset.Zero, size), Paint())
-                drawText(l, color = Color.White)
+                canvas.saveLayer(Rect(Offset(0f, -fontPx), Size(size.width, size.height + 2 * fontPx)), Paint())
+                pass(Color.White, glow = true)
                 val top = l.getLineTop(row)
                 val bottom = l.getLineBottom(row)
                 // Fila actual: se conserva hasta x y se desvanece en el borde.
@@ -376,4 +437,221 @@ private fun LyricText(line: LyricLine, active: Boolean, clock: State<Double>, st
             }
         },
     )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Efectos de la letra de Cider (reproductor de letras de Cider 4.0.9.1, `clp`): puntos en las pausas,
+// sílabas que se alzan al cantarse y brillo con ola en las sostenidas. Se siguen los valores de Cider
+// para que la app se vea como Cider en el escritorio (decisión del usuario, 2026-11-23); el detalle y
+// las fuentes, en docs/letras-apple-music.md.
+// ---------------------------------------------------------------------------------------------
+
+/** Elemento de la lista de la letra: una línea o una pausa. [activeFrom]: desde cuándo es el elemento activo. */
+private sealed interface LyricItem { val activeFrom: Double }
+private class LineItem(val line: LyricLine) : LyricItem { override val activeFrom get() = line.startSec - Lead }
+/** Pausa de [start] (fin de lo cantado antes; 0 en la introducción) a [end] (cuando sube la línea siguiente). */
+private class GapItem(val start: Double, val end: Double) : LyricItem { override val activeFrom get() = start }
+
+/** Pausa mínima con puntos (Cider: ≥ 5 s). También en la introducción; nunca tras la última línea. */
+private const val InterludeMin = 5.0
+
+private fun lyricItems(lyrics: Lyrics): List<LyricItem> {
+    val out = ArrayList<LyricItem>(lyrics.lines.size + 4)
+    var sungUntil = 0.0
+    lyrics.lines.forEachIndexed { i, l ->
+        // Desde el mayor final de todo lo anterior: las líneas se solapan.
+        val from = if (i == 0) 0.0 else sungUntil
+        val until = l.startSec - Lead
+        if (l.startSec - from >= InterludeMin && until > from) out += GapItem(from, until)
+        out += LineItem(l)
+        sungUntil = maxOf(sungUntil, l.endSec)
+    }
+    return out
+}
+
+private val ExpoOut = androidx.compose.animation.core.Easing { x -> if (x >= 1f) 1f else 1f - Math.pow(2.0, -10.0 * x).toFloat() }
+
+/** easeInOutBack (la salida con rebote de los puntos de Cider). */
+private fun easeInOutBack(x: Float): Float {
+    val c = 1.70158f * 1.525f
+    return if (x < 0.5f) (2 * x) * (2 * x) * ((c + 1) * 2 * x - c) / 2
+    else ((2 * x - 2) * (2 * x - 2) * ((c + 1) * (x * 2 - 2) + c) + 2) / 2
+}
+
+/**
+ * Tres puntos durante una pausa (Cider `updateDots`): grupo a escala 0,7 que respira ±5 % (ciclos de ~4,7 s que
+ * caben enteros en la pausa), crece desde 0 en 2 s con salida exponencial y aparece entre 0,5 y 1 s; en los
+ * últimos 0,75 s encoge con un pequeño rebote y en los últimos 0,375 s se desvanece. Cada punto pasa de 0,25 a 1
+ * en su tercio de la pausa. Puntos de 0,34 em separados 0,22 em, pegados al margen del texto. Se lee el reloj
+ * al dibujar: solo se repinta este elemento.
+ */
+@Composable
+private fun InterludeDots(gap: GapItem, clock: State<Double>, style: androidx.compose.ui.text.TextStyle) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val fontPx = with(density) { style.fontSize.toPx() }
+    // Alto de una fila de texto (con los 0,35 em de Cider arriba y abajo, casi lo mismo).
+    val rowDp = with(density) { style.lineHeight.toDp() }
+    androidx.compose.foundation.layout.Spacer(
+        Modifier.fillMaxWidth().height(rowDp).drawBehind {
+            val total = (gap.end - gap.start).coerceAtLeast(0.001)
+            val n = clock.value - gap.start
+            if (n <= 0 || n >= total) return@drawBehind
+            val r = total / kotlin.math.ceil(total / 1.5)
+            var scale = (kotlin.math.sin(1.5 * Math.PI - n / r * 2) / 20 + 1).toFloat()
+            var alpha = 1f
+            if (n < 2) scale *= ExpoOut.transform((n / 2).toFloat())
+            alpha = if (n < 0.5) 0f else if (n < 1) ((n - 0.5) / 0.5).toFloat() else 1f
+            val left = total - n
+            if (left < 0.75) scale *= 1f - easeInOutBack(((0.75 - left) / 0.75 / 2).toFloat())
+            if (left < 0.375) alpha *= (left / 0.375).toFloat().coerceIn(0f, 1f)
+            scale = scale.coerceAtLeast(0f) * 0.7f
+            if (scale <= 0f || alpha <= 0f) return@drawBehind
+            val dot = 0.34f * fontPx
+            val gapX = 0.22f * fontPx
+            val groupW = 3 * dot + 2 * gapX
+            val x0 = -0.15f * fontPx
+            val cy = size.height / 2
+            val s = (total - 0.75).coerceAtLeast(0.001)
+            scale(scale, pivot = Offset(x0 + groupW / 2, cy)) {
+                for (k in 0..2) {
+                    val a = (((n - k * s / 3) * 3 / s) * 0.75).toFloat().coerceIn(0.25f, 1f)
+                    drawCircle(Color.White.copy(alpha = alpha * a), radius = dot / 2, center = Offset(x0 + dot / 2 + k * (dot + gapX), cy))
+                }
+            }
+        },
+    )
+}
+
+/** Curvas de Cider: `ease-out` de CSS (alzado) y la del pico del brillo (sube con una, baja con otra). */
+private val LiftEase = androidx.compose.animation.core.CubicBezierEasing(0f, 0f, 0.58f, 1f)
+private val GlowUp = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0.4f, 0.58f, 1f)
+private val GlowDown = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.58f, 1f)
+private fun glowCurve(x: Float): Float = if (x < 0.5f) GlowUp.transform(x / 0.5f) else 1f - GlowDown.transform((x - 0.5f) / 0.5f)
+
+/**
+ * Alzado y brillo de las sílabas de una línea (Cider `fxSpecs`):
+ * - cada sílaba sube 0,05 em desde que empieza, en max(1 s, su duración), con `ease-out`, y se queda arriba;
+ * - las de ≥ 1 s se animan letra a letra: escala hasta 1 + 0,1·intensidad sobre el centro de la letra, las letras
+ *   se separan del centro de la sílaba y suben un poco, con un resplandor blanco; la ola recorre la sílaba en el
+ *   40 % de su duración. Además cada letra flota 0,05 em (seno) desde 0,4 s antes y durante 1,4 veces ese tiempo.
+ *   La intensidad crece con la duración (cúbica hasta 2–3 s, raíz después) y la sílaba que contiene el texto
+ *   de la última de la línea va más fuerte y dura más.
+ * La línea se dibuja por sílabas, cada una recortada a su caja y desplazada; las de brillo, letra a letra.
+ */
+private class SyllableFx(
+    private val line: LyricLine,
+    private val ranges: List<IntRange>,
+    layout: TextLayoutResult,
+    measurer: androidx.compose.ui.text.TextMeasurer,
+    style: androidx.compose.ui.text.TextStyle,
+    private val fontPx: Float,
+) {
+    val liftPx = 0.05f * fontPx
+    private val text = layout.layoutInput.text.text
+    /** Caja de cada sílaba (todas sus filas), en el diseño de la línea. */
+    private val paths: List<androidx.compose.ui.graphics.Path?> = ranges.map { r ->
+        if (r.isEmpty() || r.last >= text.length) null else layout.getPathForRange(r.first, r.last + 1)
+    }
+    private val prefix = HashMap<Int, androidx.compose.ui.graphics.Path>()
+    private val suffix = HashMap<Int, androidx.compose.ui.graphics.Path>()
+
+    private class Glyph(val layout: TextLayoutResult, val left: Float, val top: Float, val index: Int)
+    private class Glow(val k: Int, val startMs: Double, val durMs: Double, val amount: Float, val glow: Float, val radiusEm: Float, val glyphs: List<Glyph>)
+
+    private val glows: Map<Int, Glow> = run {
+        val out = HashMap<Int, Glow>()
+        val lastText = line.words.lastOrNull()?.text.orEmpty()
+        line.words.forEachIndexed { k, w ->
+            val d = (w.endSec - w.startSec) * 1000
+            val r = ranges.getOrNull(k) ?: return@forEachIndexed
+            if (d < 1000 || r.isEmpty() || r.last >= text.length) return@forEachIndexed
+            var f = maxOf(1000.0, d)
+            var p = f / 2000; p = if (p > 1) kotlin.math.sqrt(p) else p * p * p
+            var m = f / 3000; m = if (m > 1) kotlin.math.sqrt(m) else m * m * m
+            p *= 0.6; m *= 0.5
+            if (lastText.isNotEmpty() && w.text.contains(lastText)) { p *= 1.6; m *= 1.5; f *= 1.2 }
+            p = minOf(1.2, p)
+            // Brillo: con la fórmula de Cider (m de arriba) una sílaba de 1,5 s apenas brillaba (opacidad 0,06) y el
+            // usuario lo vio muy débil frente a una grabación de referencia ("Ain't In LA", 2026-11-23), donde la
+            // palabra sostenida lleva un halo blanco claro de ~0,25 em. Fuerte desde 1 s y algo más con la duración.
+            // Primer ajuste (0,6–0,9 y dos halos enteros): "ahora fue mucho"; a mitad de camino.
+            m = (0.35 + 0.2 * ((d - 1000) / 1500).coerceIn(0.0, 1.0)) * (if (lastText.isNotEmpty() && w.text.contains(lastText)) 1.1 else 1.0)
+            m = minOf(0.6, m)
+            val chars = r.filter { !text[it].isWhitespace() }
+            val glyphs = chars.mapIndexed { i, o ->
+                val box = layout.getBoundingBox(o)
+                val baseline = layout.getLineBaseline(layout.getLineForOffset(o))
+                val g = measurer.measure(text.substring(o, o + 1), style)
+                Glyph(g, box.left, baseline - g.firstBaseline, i)
+            }
+            if (glyphs.isNotEmpty()) out[k] = Glow(k, w.startSec * 1000, f, p.toFloat(), m.toFloat(), 0.22f, glyphs)
+        }
+        out
+    }
+
+    private fun lift(k: Int, tMs: Double): Float {
+        val w = line.words[k]
+        val x = ((tMs - w.startSec * 1000) / maxOf(1000.0, (w.endSec - w.startSec) * 1000)).coerceIn(0.0, 1.0).toFloat()
+        return liftPx * LiftEase.transform(x)
+    }
+
+    /** La sílaba se dibuja letra a letra (su brillo o su flotación están en marcha). */
+    private fun animating(g: Glow, tMs: Double): Boolean {
+        val lastStart = g.startMs + g.durMs / 2.5 / g.glyphs.size * (g.glyphs.size - 1)
+        return tMs > g.startMs - 400 && tMs < lastStart + maxOf(g.durMs, g.durMs * 1.4 - 400)
+    }
+
+    private fun union(from: Int, until: Int): androidx.compose.ui.graphics.Path {
+        val p = androidx.compose.ui.graphics.Path()
+        for (k in from until until) paths[k]?.let { p.addPath(it) }
+        return p
+    }
+
+    fun androidx.compose.ui.graphics.drawscope.DrawScope.draw(l: TextLayoutResult, t: Double, color: Color, glow: Boolean) {
+        val n = line.words.size
+        if (n == 0 || paths.size != n) { drawText(l, color = color); return }
+        val tMs = t * 1000
+        // Sílabas que ya están arriba del todo (y sin efecto en marcha) al principio, y las que aún no han
+        // empezado al final: un solo recorte para cada grupo (en caché); en medio, una a una.
+        var a = 0
+        while (a < n && lift(a, tMs) >= liftPx && glows[a]?.let { animating(it, tMs) } != true) a++
+        var b = n
+        while (b > a && tMs < line.words[b - 1].startSec * 1000 - 400) b--
+        if (a > 0) clipPath(prefix.getOrPut(a) { union(0, a) }) { translate(0f, -liftPx) { drawText(l, color = color) } }
+        if (b < n) clipPath(suffix.getOrPut(b) { union(b, n) }) { drawText(l, color = color) }
+        for (k in a until b) {
+            val g = glows[k]
+            if (g != null && animating(g, tMs)) drawGlyphs(g, lift(k, tMs), tMs, color, glow)
+            else paths[k]?.let { clipPath(it) { translate(0f, -lift(k, tMs)) { drawText(l, color = color) } } }
+        }
+    }
+
+    private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGlyphs(g: Glow, lift: Float, tMs: Double, color: Color, glow: Boolean) {
+        val count = g.glyphs.size
+        for (glyph in g.glyphs) {
+            val i = glyph.index
+            val start = g.startMs + g.durMs / 2.5 / count * i
+            val x = ((tMs - start) / g.durMs).toFloat()
+            val e = if (x in 0f..1f) glowCurve(x) else 0f
+            val sx = ((tMs - (start - 400)) / (g.durMs * 1.4)).toFloat()
+            val float = if (sx in 0f..1f) kotlin.math.sin(sx * Math.PI).toFloat() * 0.05f * fontPx else 0f
+            val sc = 1f + 0.1f * g.amount * e
+            val dx = -0.03f * g.amount * e * (count / 2f - i) * fontPx
+            val dy = -0.025f * g.amount * e * fontPx
+            // Halo en dos capas: uno ancho (0,22 em) y otro ceñido (0,07 em), como el de la referencia.
+            // Desenfoque de `text-shadow` (σ = r/2) a radio de Android (σ ≈ 0,577·radio + 0,5).
+            fun shadow(em: Float, alpha: Float): androidx.compose.ui.graphics.Shadow? {
+                if (!glow || e <= 0f) return null
+                val blur = ((em * fontPx / 2 - 0.5f) / 0.577f).coerceAtLeast(0f)
+                return if (blur > 0f) androidx.compose.ui.graphics.Shadow(Color.White.copy(alpha = (alpha * e).coerceIn(0f, 1f)), Offset.Zero, blur) else null
+            }
+            translate(glyph.left + dx, glyph.top + dy - lift - float) {
+                val c = Offset(glyph.layout.size.width / 2f, glyph.layout.size.height / 2f)
+                scale(sc, pivot = c) {
+                    shadow(g.radiusEm, g.glow * 0.7f)?.let { drawText(glyph.layout, color = color, shadow = it) }
+                    drawText(glyph.layout, color = color, shadow = shadow(0.07f, g.glow * 0.6f))
+                }
+            }
+        }
+    }
 }
