@@ -65,10 +65,30 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.floor
 
-private sealed interface LyricsLoad {
+sealed interface LyricsLoad {
     data object Loading : LyricsLoad
     data object None : LyricsLoad
     data class Ready(val lyrics: Lyrics) : LyricsLoad
+}
+
+/**
+ * Letras ya pedidas, en memoria. Antes cada vez que se abría la letra se volvía a pedir (~0,3 s con el indicador
+ * girando): el paso de la carátula a la letra parecía más largo que la vuelta. La hoja precarga la de la canción
+ * que suena ([preload]).
+ */
+object LyricsCache {
+    private val cache = android.util.LruCache<String, LyricsLoad>(12)
+    fun peek(catalogId: String): LyricsLoad? = cache.get(catalogId)
+    suspend fun load(remote: CiderRemote, catalogId: String): LyricsLoad {
+        peek(catalogId)?.let { return it }
+        // Por sílaba si Apple la tiene (karaoke); si no, por línea.
+        val lyrics = runCatching { remote.api.lyrics(catalogId, syllable = true) }.getOrNull()
+            ?: runCatching { remote.api.lyrics(catalogId) }.getOrNull()
+        val result = lyrics?.let { LyricsLoad.Ready(it) } ?: LyricsLoad.None
+        // Solo las encontradas: "sin letra" puede ser un fallo de red y se reintenta la próxima vez.
+        if (lyrics != null) cache.put(catalogId, result)
+        return result
+    }
 }
 
 @Composable
@@ -81,14 +101,11 @@ fun LyricsView(
 ) {
     // Las canciones de la biblioteca traen un id `i.…`; las letras van por el del catálogo.
     val catalogId = state.track?.catalogId
-    val load by produceState<LyricsLoad>(LyricsLoad.Loading, catalogId) {
+    val load by produceState(catalogId?.let { LyricsCache.peek(it) } ?: LyricsLoad.Loading, catalogId) {
+        if (catalogId == null) { value = LyricsLoad.None; return@produceState }
+        LyricsCache.peek(catalogId)?.let { value = it; return@produceState }
         value = LyricsLoad.Loading
-        value = if (catalogId == null) LyricsLoad.None else {
-            // Por sílaba si Apple la tiene (karaoke); si no, por línea.
-            (runCatching { remote.api.lyrics(catalogId, syllable = true) }.getOrNull()
-                ?: runCatching { remote.api.lyrics(catalogId) }.getOrNull())
-                ?.let { LyricsLoad.Ready(it) } ?: LyricsLoad.None
-        }
+        value = LyricsCache.load(remote, catalogId)
     }
     Box(modifier, contentAlignment = Alignment.Center) {
         when (val l = load) {

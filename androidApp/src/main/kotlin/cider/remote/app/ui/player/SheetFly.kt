@@ -74,7 +74,17 @@ fun rememberSheetFly(
     restScale: () -> Float = { 1f },
     videoAspect: Float? = null,
     squareTop: Float? = null,
-): SheetFly = remember(sheet, root, pinLeft, corner, videoAspect, squareTop) {
+    /**
+     * Paso entre la carátula y la letra o la cola ([ArtSwap]): mientras dura, la pieza vuela entre la miniatura
+     * de la cabecera y su sitio con el progreso de ese cambio, igual que al abrir la hoja desde el miniplayer.
+     */
+    swap: ArtSwap? = null,
+): SheetFly = remember(sheet, root, pinLeft, corner, videoAspect, squareTop, swap) {
+    // Quién mueve el vuelo: el cambio de modo si está en curso; si no, la hoja.
+    fun swapping() = swap != null && swap.active && swap.smallInSheet != null
+    fun progress(): Float = if (swapping()) 1f - swap!!.progress.value.coerceIn(0f, 1f) else sheet.progress
+    fun thumb(): Rect? = if (swapping()) swap!!.smallInSheet else sheet.thumb
+    fun offset(): Float = if (swapping()) 0f else sheet.offsetPx
     // Estados: la capa se recalcula en cuanto se conocen (el primer fotograma se coloca antes de medirlos).
     var own: LayoutCoordinates? by mutableStateOf(null, referentialEqualityPolicy())
     val outer = Modifier.onGloballyPositioned { own = it }
@@ -83,14 +93,14 @@ fun rememberSheetFly(
     fun rest(): Rect? {
         val base = root.coordinates
         val me = own
-        if (sheet.progress >= 1f || sheet.thumb == null || base == null || me == null || !base.isAttached || !me.isAttached) return null
+        if (progress() >= 1f || thumb() == null || base == null || me == null || !base.isAttached || !me.isAttached) return null
         return base.localBoundingBoxOf(me, clipBounds = false).takeIf { it.width > 0f }
     }
 
     /** La capa mide lo que [rest] (la caja de [outer]); [margin]: cuánto sale la pieza por debajo de la pantalla (px). */
     fun flight(rest: Rect, k: Float, margin: Float): Flight? {
-        val p = sheet.progress
-        val thumb = sheet.thumb ?: return null
+        val p = progress()
+        val thumb = thumb() ?: return null
         val finalWidth = rest.width * k
         val finalLeft = rest.left + (rest.width - finalWidth) / 2f
         val finalTop = rest.top + rest.height * (1f - k) / 2f
@@ -115,12 +125,12 @@ fun rememberSheetFly(
 
     val inner = Modifier.graphicsLayer {
         val k = restScale()
-        val p = sheet.progress
+        val p = progress()
         transformOrigin = TransformOrigin(0f, 0f)
         val rest = rest()
         val f = rest?.let { flight(it, k, corner?.toPx() ?: 0f) }
         // Hoja a medio camino y aún sin medidas (su primer fotograma): mejor nada que la carátula en su sitio final.
-        alpha = if (p < 1f && sheet.thumb != null && (root.coordinates == null || own == null)) 0f else 1f
+        alpha = if (p < 1f && thumb() != null && (root.coordinates == null || own == null)) 0f else 1f
         if (rest == null || f == null) {
             // En su sitio: solo la escala de reposo, desde el centro.
             scaleX = k
@@ -135,7 +145,7 @@ fun rememberSheetFly(
             translationX = f.left - rest.left
             // `rest` está en coordenadas de la hoja, que ahora mismo va desplazada `offsetPx` hacia abajo;
             // `f.top` es el borde superior de lo que se ve: la capa sube lo que se recorta por arriba.
-            translationY = f.top - f.cropTop * f.scale - sheet.offsetPx - rest.top
+            translationY = f.top - f.cropTop * f.scale - offset() - rest.top
             if (corner != null) {
                 clip = true
                 // El radio se da en pantalla; la capa va escalada.
@@ -149,7 +159,7 @@ fun rememberSheetFly(
     // Solo propiedades de capa: medirla o colocarla con el progreso regrababa la capa de [inner] en cada
     // fotograma, y con ella el vídeo y sus dos desenfoques (120 veces por segundo en vez de 24).
     val cover = if (videoAspect == null) null else Modifier.graphicsLayer {
-        val p = sheet.progress
+        val p = progress()
         val f = if (p < CoverEnd) rest()?.let { flight(it, 1f, 0f) } else null
         compositingStrategy = CompositingStrategy.ModulateAlpha
         if (f == null) alpha = 0f

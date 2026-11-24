@@ -15,7 +15,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.expandVertically
@@ -35,6 +34,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import cider.remote.app.ui.components.rememberArtworkPalette
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import cider.remote.app.app
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -370,6 +370,12 @@ private fun PhoneSheet(
     // letra ocupa la pantalla (Apple Music); cualquier toque los devuelve.
     var touches by remember { mutableIntStateOf(0) }
     var controlsHidden by remember { mutableStateOf(false) }
+    // Carátula que vuela entre la tarjeta grande y la cabecera pequeña de letra y cola (ver ArtSwap).
+    val swap = remember { ArtSwap(if (mode == SheetMode.Artwork) 0f else 1f) }
+    LaunchedEffect(mode) { swap.go(if (mode == SheetMode.Artwork) 0f else 1f) }
+    // La letra de la canción que suena, pedida de antemano: al abrirla ya está y aparece con el vuelo.
+    val lyricsId = state.track?.catalogId
+    LaunchedEffect(lyricsId) { if (lyricsId != null) LyricsCache.load(remote, lyricsId) }
     LaunchedEffect(mode, touches, state.isPlaying) {
         controlsHidden = false
         if (mode == SheetMode.Lyrics && state.isPlaying) { delay(4000); controlsHidden = true }
@@ -387,48 +393,34 @@ private fun PhoneSheet(
     ) {
         val width = maxWidth
         // Portada animada: 3:4 a todo el ancho, detrás de todo y fundida con el fondo.
-        AnimatedVisibility(mode == SheetMode.Artwork && video != null, enter = fadeIn(), exit = fadeOut()) {
+        // Al pasar entre la letra o la cola y la carátula, el propio vídeo vuela desde la miniatura de la cabecera
+        // (o hacia ella) como al abrir la hoja: SheetFly con el progreso del cambio. Sigue compuesto mientras dura.
+        // Antes entraba con su fundido a toda la pantalla mientras la carátula crecía encima (dos portadas).
+        swap.video = video != null
+        swap.sheetRoot = root
+        // Al terminar de ir a la letra, el vuelo suelta la pieza un fotograma antes de que salga de la composición
+        // y se veía en su sitio a pantalla completa: fuera de la carátula y sin vuelo, no se dibuja.
+        val heroShown = mode == SheetMode.Artwork
+        AnimatedVisibility(
+            (heroShown || swap.active) && video != null,
+            enter = androidx.compose.animation.EnterTransition.None, exit = androidx.compose.animation.ExitTransition.None,
+            modifier = Modifier.graphicsLayer { alpha = if (heroShown || swap.active) 1f else 0f },
+        ) {
             // Al abrir y cerrar vuela desde la miniatura, pegada a la izquierda: sale cuadrada, con la carátula fija,
             // y se alarga hasta la hoja entera (vídeo y su reflejo).
             HeroArtwork(
                 state.track?.artwork, video, videoPreview, width * 4 / 3, dismissDrag,
-                rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp, videoAspect = 4f / 3f, squareTop = squareTop),
+                rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp, videoAspect = 4f / 3f, squareTop = squareTop, swap = swap),
                 light = light, under = under,
             )
         }
         Column(Modifier.fillMaxSize()) {
-            // La carátula pasa de la cabecera pequeña (letra/cola) a la tarjeta grande y vuelve
-            // creciendo/encogiéndose en su sitio; el resto se funde.
-            SharedTransitionLayout(Modifier.weight(1f).fillMaxWidth()) {
+            // La carátula vuela de la tarjeta grande a la cabecera pequeña (letra/cola) y vuelve, como al abrir
+            // la hoja (ArtSwap); el resto se funde.
+            Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { swap.root = it }) {
             AnimatedContent(mode, Modifier.fillMaxSize(), transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(200)) }, label = "modo") { m ->
-                val shared = Modifier.sharedElement(
-                    rememberSharedContentState("caratula"), this@AnimatedContent,
-                    boundsTransform = { _, _ -> spring(dampingRatio = 0.86f, stiffness = 320f) },
-                )
                 when (m) {
                     SheetMode.Artwork -> Box(Modifier.fillMaxSize()) {
-                    // Con portada animada no hay tarjeta: la carátula pequeña vuela hasta el sitio del vídeo
-                    // (y vuelve desde él). Solo se ve durante la transición; en reposo se ve el vídeo de detrás.
-                    if (video != null) {
-                        val running = this@AnimatedContent.transition.isRunning
-                        val heroPx = with(LocalDensity.current) { (width * 4 / 3).roundToPx() }
-                        Box(
-                            Modifier.layout { measurable, c ->
-                                val p = measurable.measure(Constraints.fixed(c.maxWidth, heroPx))
-                                layout(c.maxWidth, minOf(heroPx, c.maxHeight)) { p.place(0, 0) }
-                            }.graphicsLayer { alpha = if (running) 1f else 0f }.then(shared)
-                                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
-                                .drawWithContent {
-                                    drawContent()
-                                    drawRect(Brush.verticalGradient(0.7f to Color.Black, 1f to Color.Transparent), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
-                                },
-                        ) {
-                            AsyncImage(
-                                model = state.track?.artwork?.sized(HeroArtworkPx), contentDescription = null,
-                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                    }
                     Column(Modifier.fillMaxSize()) {
                         // Sin vídeo, tarjeta centrada a 24 dp de los lados y 44 dp sobre el título.
                         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().then(dismissDrag).statusBarsPadding()) {
@@ -438,7 +430,12 @@ private fun PhoneSheet(
                                 val scale = animateFloatAsState(if (state.isPlaying) 1f else 0.78f, spring(dampingRatio = 0.72f, stiffness = 260f), label = "pausa")
                                 // Al abrir y cerrar la hoja vuela desde la miniatura del miniplayer (la escala de pausa va en la misma capa).
                                 val fly = rememberSheetFly(sheet, root, restScale = { scale.value })
-                                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp).then(shared).then(fly.outer)) {
+                                swap.bigScale = { scale.value }
+                                Box(
+                                    Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp)
+                                        .onGloballyPositioned { swap.measureBig(it) }
+                                        .graphicsLayer { alpha = if (swap.active) 0f else 1f }.then(fly.outer),
+                                ) {
                                     val cardShape = RoundedCornerShape(10.dp)
                                     val card = fly.inner.shadow(24.dp, cardShape, ambientColor = Color.Black, spotColor = Color.Black)
                                     if (squareVideo != null) {
@@ -484,13 +481,18 @@ private fun PhoneSheet(
                         }
                         Box(Modifier.statusBarsPadding().padding(start = extra(28.dp), end = extra(24.dp))) {
                             CompactHeader(
-                                remote, state, dismissDrag, artwork = shared, onArtwork = { onMode(SheetMode.Artwork) },
+                                remote, state, dismissDrag,
+                                artwork = Modifier.onGloballyPositioned { swap.measureSmall(it) }.graphicsLayer { alpha = if (swap.active) 0f else 1f },
+                                onArtwork = { onMode(SheetMode.Artwork) },
                                 fly = rememberSheetFly(sheet, root), fade = fade,
                             )
                         }
                     }
                 }
             }
+            // Encima de los dos modos: la carátula que vuela entre la tarjeta y la cabecera.
+            // Con portada animada vuela el propio vídeo (arriba); la carátula sola, solo sin él.
+            if (video == null) ArtSwapOverlay(swap, state.track?.artwork)
             }
             AnimatedVisibility(
                 !(controlsHidden && mode == SheetMode.Lyrics),
@@ -1387,5 +1389,103 @@ private fun ModeButton(icon: ImageVector, description: String, selected: Boolean
             Icon(icon, null, tint = if (selected) Color.Black.copy(alpha = 0.7f) else LocalSheetTint.current.icon,
                 modifier = Modifier.size(24.dp).then(if (selected) Modifier else Modifier.plusBlend()))
         }
+    }
+}
+
+/**
+ * Vuelo de la carátula entre la tarjeta grande (modo carátula) y la miniatura de la cabecera de letra y cola,
+ * con el movimiento de abrir la hoja (SheetFly): tamaño y borde de arriba en línea recta, centro adelantado
+ * (1 − (1 − t)², trayectoria curva) y la curva del toque (450 ms). Antes era una transición compartida de
+ * Compose, que mueve los cuatro bordes en línea recta: la carátula parecía crecer desde la esquina izquierda,
+ * y al ir a la letra ni se veía. [progress]: 0 = tarjeta grande, 1 = cabecera. Los rectángulos se guardan al
+ * colocarse (la cabecera está siempre en el mismo sitio) y siguen sirviendo cuando su modo ya no se compone.
+ */
+@androidx.compose.runtime.Stable
+class ArtSwap(initial: Float) {
+    val progress = androidx.compose.animation.core.Animatable(initial)
+    var active by mutableStateOf(false)
+        private set
+    var root: androidx.compose.ui.layout.LayoutCoordinates? = null
+    var big by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+        private set
+    var small by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+        private set
+    /** La miniatura en coordenadas de la raíz de la hoja (las de SheetFly), para el vuelo de la portada animada. */
+    var smallInSheet by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+        private set
+    var sheetRoot: SheetRoot? = null
+    /** Con portada animada vuela el propio vídeo (SheetFly) y no hay tarjeta grande que medir. */
+    var video = false
+    /** Escala de pausa de la tarjeta grande (se encoge al 78 %), leída al dibujar. */
+    var bigScale: () -> Float = { 1f }
+
+    private fun boundsOf(c: androidx.compose.ui.layout.LayoutCoordinates): androidx.compose.ui.geometry.Rect? {
+        val r = root ?: return null
+        if (!r.isAttached || !c.isAttached) return null
+        return r.localBoundingBoxOf(c, clipBounds = false).takeIf { it.width > 0f }
+    }
+    fun measureBig(c: androidx.compose.ui.layout.LayoutCoordinates) { boundsOf(c)?.let { if (it != big) big = it } }
+    fun measureSmall(c: androidx.compose.ui.layout.LayoutCoordinates) {
+        boundsOf(c)?.let { if (it != small) small = it }
+        val r = sheetRoot?.coordinates
+        if (r != null && r.isAttached && c.isAttached) r.localBoundingBoxOf(c, clipBounds = false).takeIf { it.width > 0f }?.let { if (it != smallInSheet) smallInSheet = it }
+    }
+
+    /**
+     * Curva simétrica (f(1 − t) = 1 − f(t)): la ida es la vuelta al revés. Con la curva del toque de la hoja
+     * (exponencial, casi todo el movimiento al principio) la vuelta parecía mucho más rápida que la ida: la
+     * portada animada recupera todo el ancho al 63 % del recorrido, que al volver llegaba en ~90 ms y al ir
+     * dejaba el encogerse para la cola lenta de la curva.
+     */
+    private val Curve = androidx.compose.animation.core.tween<Float>(420, easing = androidx.compose.animation.core.CubicBezierEasing(0.33f, 0f, 0.67f, 1f))
+
+    suspend fun go(target: Float) {
+        if (progress.value == target && !progress.isRunning) return
+        active = true
+        try {
+            // El modo nuevo se coloca en el siguiente fotograma: se espera a conocer los dos extremos (máx. ~100 ms).
+            kotlinx.coroutines.withTimeoutOrNull(100) {
+                androidx.compose.runtime.snapshotFlow { small != null && smallInSheet != null && (video || big != null) }.first { ready -> ready }
+            }
+            progress.animateTo(target, Curve)
+        } finally {
+            progress.snapTo(target)
+            active = false
+        }
+    }
+}
+
+@Composable
+private fun ArtSwapOverlay(swap: ArtSwap, artwork: Artwork?) {
+    if (!swap.active) return
+    val big = swap.big ?: return
+    val small = swap.small ?: big
+    val density = LocalDensity.current
+    val bigCorner = with(density) { 10.dp.toPx() }
+    val smallCorner = with(density) { 6.dp.toPx() }
+    Box(
+        Modifier
+            .offset { IntOffset(big.left.roundToInt(), big.top.roundToInt()) }
+            .size(with(density) { big.width.toDp() }, with(density) { big.height.toDp() })
+            .graphicsLayer {
+                // Tarjeta grande escalada por la pausa alrededor de su centro.
+                val k = swap.bigScale()
+                val bw = big.width * k
+                val bx = big.center.x
+                val by = big.center.y - big.height * k / 2f
+                val t = 1f - swap.progress.value.coerceIn(0f, 1f)
+                val w = androidx.compose.ui.util.lerp(small.width, bw, t)
+                val top = androidx.compose.ui.util.lerp(small.top, by, t)
+                val cx = androidx.compose.ui.util.lerp(small.center.x, bx, 1f - (1f - t) * (1f - t))
+                val sc = (w / big.width).coerceAtLeast(0.01f)
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                scaleX = sc; scaleY = sc
+                translationX = cx - w / 2f - big.left
+                translationY = top - big.top
+                clip = true
+                shape = RoundedCornerShape(androidx.compose.ui.util.lerp(smallCorner, bigCorner, t) / sc)
+            },
+    ) {
+        AsyncImage(model = artwork?.sized(SheetArtworkPx), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
     }
 }
