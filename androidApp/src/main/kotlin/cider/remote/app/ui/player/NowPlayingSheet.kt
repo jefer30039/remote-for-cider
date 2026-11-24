@@ -400,25 +400,40 @@ private fun PhoneSheet(
         swap.sheetRoot = root
         // Al terminar de ir a la letra, el vuelo suelta la pieza un fotograma antes de que salga de la composición
         // y se veía en su sitio a pantalla completa: fuera de la carátula y sin vuelo, no se dibuja.
+        // Con la letra o la cola a la vista sigue compuesta, en pausa y sin dibujarse: sacarla de la composición y
+        // volver a crearla (reproductor, vista del vídeo) era lo que más tardaba al volver a la carátula, y el
+        // vídeo se recargaba: se veía un segundo el fotograma fijo y luego arrancaba de cero. Ahora continúa donde
+        // estaba. No se rebobina al ocultarla: hay vídeos que empiezan con un destello ("SOUR") y caía en pleno vuelo.
         val heroShown = mode == SheetMode.Artwork
-        AnimatedVisibility(
-            (heroShown || swap.active) && video != null,
-            enter = androidx.compose.animation.EnterTransition.None, exit = androidx.compose.animation.ExitTransition.None,
-            modifier = Modifier.graphicsLayer { alpha = if (heroShown || swap.active) 1f else 0f },
+        val heroVisible = heroShown || swap.active
+        if (video != null) Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer { alpha = if (heroShown || swap.active) 1f else 0f }
+                .drawWithContent { if (heroShown || swap.active) drawContent() },
         ) {
             // Al abrir y cerrar vuela desde la miniatura, pegada a la izquierda: sale cuadrada, con la carátula fija,
             // y se alarga hasta la hoja entera (vídeo y su reflejo).
             HeroArtwork(
-                state.track?.artwork, video, videoPreview, width * 4 / 3, dismissDrag,
+                state.track?.artwork, video, videoPreview, width * 4 / 3, if (heroVisible) dismissDrag else Modifier,
                 rememberSheetFly(sheet, root, pinLeft = true, corner = 24.dp, videoAspect = 4f / 3f, squareTop = squareTop, swap = swap),
-                light = light, under = under,
+                light = light, under = under, playing = heroVisible,
             )
         }
         Column(Modifier.fillMaxSize()) {
             // La carátula vuela de la tarjeta grande a la cabecera pequeña (letra/cola) y vuelve, como al abrir
             // la hoja (ArtSwap); el resto se funde.
             Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { swap.root = it }) {
-            AnimatedContent(mode, Modifier.fillMaxSize(), transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(200)) }, label = "modo") { m ->
+            // Modo rendimiento: sin fundido (los dos modos a la vez son dos capas fuera de pantalla casi del tamaño
+            // de la hoja durante un cuarto de segundo); el modo nuevo aparece ya y la carátula vuela encima.
+            val liteSwap = cider.remote.app.ui.Appearance.lite
+            AnimatedContent(
+                mode, Modifier.fillMaxSize(),
+                transitionSpec = {
+                    if (liteSwap) androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+                    else fadeIn(tween(260)) togetherWith fadeOut(tween(200))
+                },
+                label = "modo",
+            ) { m ->
                 when (m) {
                     SheetMode.Artwork -> Box(Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxSize()) {
@@ -458,17 +473,23 @@ private fun PhoneSheet(
                             // Music): la vista empieza arriba y la línea activa queda donde estaba.
                             val fadeFrom = with(LocalDensity.current) { (statusTop + 72.dp).toPx() }
                             val fadeTo = with(LocalDensity.current) { (statusTop + CompactHeaderHeight + 14.dp).toPx() }
+                            // Modo rendimiento: la letra se corta en seco al borde de la cabecera. La máscara es una capa
+                            // fuera de pantalla del tamaño de la vista que se rehace en cada fotograma mientras suena.
+                            val cutAt = with(LocalDensity.current) { (statusTop + CompactHeaderHeight).toPx() }
                             LyricsView(
                                 remote, state,
                                 Modifier.fillMaxSize().padding(horizontal = extra(LyricsSidePadding)).then(fade)
-                                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
-                                    .drawWithContent {
-                                        drawContent()
-                                        drawRect(
-                                            Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = fadeFrom, endY = fadeTo),
-                                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                                        )
-                                    },
+                                    .then(
+                                        if (liteSwap) Modifier.drawWithContent { clipRect(top = cutAt) { this@drawWithContent.drawContent() } }
+                                        else Modifier.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                                            .drawWithContent {
+                                                drawContent()
+                                                drawRect(
+                                                    Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = fadeFrom, endY = fadeTo),
+                                                    blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                                                )
+                                            },
+                                    ),
                                 anchorTop = statusTop + CompactHeaderHeight + 34.dp,
                             )
                         } else Column(
@@ -617,7 +638,7 @@ private val CompactHeaderHeight = 120.dp
  * (en arco, ver [BlurArcCenter]) y un velo oscuro crece desde el borde del vídeo hasta ~0,37 abajo (Apple no oscurece el vídeo).
  */
 @Composable
-private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, height: Dp, dragModifier: Modifier, fly: SheetFly, light: Float = 0f, under: Color? = null) {
+private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, height: Dp, dragModifier: Modifier, fly: SheetFly, light: Float = 0f, under: Color? = null, playing: Boolean = true) {
     // Modo rendimiento: sin reflejo desenfocado; debajo, un degradado del color de la parte baja del vídeo
     // (con el mismo ajuste que el reflejo) que se oscurece hacia abajo, y el vídeo se funde en ese color.
     val lite = cider.remote.app.ui.Appearance.lite
@@ -716,7 +737,7 @@ private fun HeroArtwork(artwork: Artwork?, video: String?, preview: String?, hei
                     }
                 }),
         ) {
-            AnimatedCover(video, Modifier.fillMaxSize(), reference = preview) {
+            AnimatedCover(video, Modifier.fillMaxSize(), playing = playing, reference = preview) {
                 AsyncImage(
                     model = artwork?.sized(PreviewArtworkPx),
                     contentDescription = null,
