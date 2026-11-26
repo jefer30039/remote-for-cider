@@ -41,9 +41,12 @@ struct NowPlayingView: View {
                 Color.black.opacity(0.9 * min(max(sheet.progress, 0), 1))
                     .allowsHitTesting(false)
 
+                // Esquinas de la pantalla mientras sube o baja con el dedo; abierta, sin esquinas.
+                let corner = max(M.screenCorner * (1 - min(max(sheet.progress, 0), 1)), min(sheet.drag * 0.8, M.screenCorner))
                 ColorField(artwork: track?.artwork)
                     .frame(width: w, height: h)
-                    .modifier(SheetFade(progress: sheet.progress, distance: distance, from: 0, to: 0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                    .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance, from: 0, to: 0.5))
 
                 ZStack(alignment: .topLeading) {
                     Capsule()
@@ -79,7 +82,7 @@ struct NowPlayingView: View {
                         .position(x: w / 2, y: h - M.bottom)
                 }
                 .frame(width: w, height: h)
-                .modifier(SheetFade(progress: sheet.progress, distance: distance))
+                .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance))
 
                 // La carátula vuela desde la miniatura del miniplayer; en pausa se encoge a 0,78 con
                 // un muelle (iOS). Debajo, la de 120 px del miniplayer mientras carga la grande.
@@ -88,7 +91,7 @@ struct NowPlayingView: View {
                     CoverImage(artwork: track?.artwork, pixels: 1200, corner: 0, placeholder: false)
                 }
                 .modifier(ArtFlight(
-                    progress: sheet.progress, scale: playing ? 1 : 0.78,
+                    progress: sheet.progress, scale: playing ? 1 : 0.78, drag: sheet.drag,
                     from: sheet.miniArt, to: art, fromCorner: MiniPlayer.artCorner, toCorner: 10
                 ))
                 .animation(.spring(response: 0.5, dampingFraction: 0.72), value: playing)
@@ -96,19 +99,17 @@ struct NowPlayingView: View {
             }
             .frame(width: w, height: h)
             .contentShape(Rectangle())
-            // Deslizar hacia abajo cierra: la hoja sigue al dedo y, al soltar, decide por la
-            // velocidad proyectada (como iOS) si cierra o vuelve.
+            // Deslizar hacia abajo cierra: la hoja entera baja con el dedo y, al soltar, decide por la
+            // velocidad proyectada (como iOS) si se recoge en el miniplayer o vuelve arriba.
             .gesture(
                 DragGesture(minimumDistance: 12, coordinateSpace: .global)
                     .onChanged { v in
-                        guard sheet.presented, distance > 0 else { return }
-                        var t = Transaction()
-                        t.disablesAnimations = true
-                        withTransaction(t) { sheet.progress = 1 - max(v.translation.height, 0) / distance }
+                        guard sheet.presented, sheet.progress == 1 || sheet.drag != 0 else { return }
+                        sheet.follow(v.translation.height)
                     }
                     .onEnded { v in
                         let projected = max(v.predictedEndTranslation.height, v.translation.height)
-                        if projected > distance * 0.35 {
+                        if projected > h * 0.3 {
                             sheet.close(animation: .smooth(duration: 0.35))
                         } else {
                             sheet.settle()
@@ -177,6 +178,8 @@ struct NowPlayingView: View {
         static let volume: CGFloat = 112
         static let bottom: CGFloat = 64
         static let bottomSpacing: CGFloat = 111
+        /// Radio de las esquinas de la pantalla del iPhone (aprox.): la hoja las lleva al moverse.
+        static let screenCorner: CGFloat = 50
     }
 }
 
