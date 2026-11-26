@@ -23,12 +23,17 @@ final class PlayerSheet {
     var miniArt: CGRect = .zero
     /// Cuánto ha bajado la hoja con el dedo (pt).
     var drag: CGFloat = 0
+    /// La hoja ya está dibujada y su carátula tapa la miniatura: el miniplayer puede esconder la suya.
+    /// Antes se escondía al pedir la hoja y, mientras el sistema la ponía (un par de fotogramas), la
+    /// miniatura se veía en negro.
+    var coversMini: Bool
 
     static let curve = Animation.smooth(duration: 0.45)
 
     init(open: Bool = false) {
         presented = open
         progress = open ? 1 : 0
+        coversMini = open
     }
 
     /// Se está abriendo: la hoja aún no ha aparecido y, cuando lo haga, anima de 0 a 1.
@@ -45,6 +50,7 @@ final class PlayerSheet {
     /// La hoja ya está en pantalla (dibujada en 0, la carátula sobre la miniatura): ahora se anima.
     /// Antes se animaba a los 34 ms de pedirla y la presentación tardaba más: aparecía ya abierta.
     func appeared() {
+        coversMini = true
         guard opening else { return }
         opening = false
         Task { @MainActor in
@@ -62,7 +68,12 @@ final class PlayerSheet {
             drag = 0
         } completion: {
             sheetLog.notice("cerrar: fin")
-            if self.progress == 0 { self.withoutAnimation { self.presented = false } }
+            if self.progress == 0 {
+                self.withoutAnimation {
+                    self.coversMini = false
+                    self.presented = false
+                }
+            }
         }
     }
 

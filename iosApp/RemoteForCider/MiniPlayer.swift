@@ -18,7 +18,7 @@ struct MiniPlayer: View {
             CoverImage(artwork: track?.artwork, pixels: 120, corner: Self.artCorner)
                 .frame(width: 30, height: 30)
                 // De aquí sale volando la carátula de la hoja (y aquí vuelve): mientras está la hoja, no se ve.
-                .opacity(sheet.presented ? 0 : 1)
+                .opacity(sheet.coversMini ? 0 : 1)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sheet.miniArt = $0 }
             VStack(alignment: .leading, spacing: 0) {
                 Text(track?.name ?? status)
