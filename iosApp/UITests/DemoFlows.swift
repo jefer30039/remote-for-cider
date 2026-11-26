@@ -26,7 +26,7 @@ final class DemoFlows: XCTestCase {
 
     /// Abrir la hoja de reproducción tocando el miniplayer, pausar, reanudar y cerrarla deslizando.
     func testOpenAndClosePlayer() {
-        let app = launch(["-demoTab", "library"])
+        let app = launch(["-demoTab", "library", "-demoLogFrames", "YES"])
         let mini = app.otherElements["miniPlayer"]
         XCTAssertTrue(mini.waitForExistence(timeout: 10))
         sleep(3)
@@ -40,6 +40,12 @@ final class DemoFlows: XCTestCase {
             sleep(2)
         }
         app.windows.firstMatch.swipeDown(velocity: .fast)
+        sleep(3)
+        // Otra vez, cerrando despacio: la hoja sigue al dedo.
+        mini.tap()
+        sleep(3)
+        let start = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 500)), withVelocity: 600, thenHoldForDuration: 0.3)
         sleep(3)
     }
 }

@@ -1,4 +1,8 @@
+import OSLog
 import SwiftUI
+
+/// Registro de la transición (`log show --predicate 'category == "hoja"'`).
+let sheetLog = Logger(subsystem: "io.github.jefer30039.remoteforcider", category: "hoja")
 
 /// Estado de la hoja de reproducción y de su transición desde el miniplayer (como Apple Music).
 ///
@@ -24,20 +28,34 @@ final class PlayerSheet {
         progress = open ? 1 : 0
     }
 
+    /// Se está abriendo: la hoja aún no ha aparecido y, cuando lo haga, anima de 0 a 1.
+    private var opening = false
+
     func open() {
         guard !presented else { return }
+        sheetLog.notice("abrir: miniatura \(self.miniArt.debugDescription, privacy: .public)")
         progress = 0
+        opening = true
         withoutAnimation { presented = true }
-        // Primero se dibuja la hoja en 0 (carátula sobre la miniatura) y después se anima.
+    }
+
+    /// La hoja ya está en pantalla (dibujada en 0, la carátula sobre la miniatura): ahora se anima.
+    /// Antes se animaba a los 34 ms de pedirla y la presentación tardaba más: aparecía ya abierta.
+    func appeared() {
+        guard opening else { return }
+        opening = false
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(34))
-            withAnimation(Self.curve) { self.progress = 1 }
+            try? await Task.sleep(for: .milliseconds(17))
+            sheetLog.notice("abrir: animación")
+            withAnimation(Self.curve) { self.progress = 1 } completion: { sheetLog.notice("abrir: fin") }
         }
     }
 
     func close(animation: Animation = PlayerSheet.curve) {
         guard presented else { return }
+        sheetLog.notice("cerrar desde \(self.progress, privacy: .public)")
         withAnimation(animation) { progress = 0 } completion: {
+            sheetLog.notice("cerrar: fin")
             if self.progress == 0 { self.withoutAnimation { self.presented = false } }
         }
     }
@@ -70,8 +88,16 @@ struct ArtFlight: ViewModifier, Animatable {
         set { progress = newValue.first; scale = newValue.second }
     }
 
+    /// `-demoLogFrames YES`: anota cada fotograma de la transición (para ver en CI si va fluida).
+    private static let logFrames = UserDefaults.standard.bool(forKey: "demoLogFrames")
+
+    private static func logFrame(_ p: Double) {
+        if logFrames, p > 0, p < 1 { sheetLog.notice("fotograma \(p, privacy: .public)") }
+    }
+
     func body(content: Content) -> some View {
         let p = min(max(progress, 0), 1)
+        let _ = Self.logFrame(p)
         let side = to.width * scale
         let big = CGRect(x: to.midX - side / 2, y: to.midY - side / 2, width: side, height: side)
         let start = from == .zero ? CGRect(x: 24, y: to.maxY + 300, width: 30, height: 30) : from

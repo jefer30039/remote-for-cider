@@ -21,14 +21,17 @@ struct NowPlayingView: View {
         let player = store.player
         let track = player?.track
         let playing = player?.isPlaying ?? false
+        // El lector respeta el área segura (así da sus márgenes) y el contenido la cubre entera: se
+        // coloca en coordenadas de pantalla, las mismas de la miniatura del miniplayer.
         GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
+            let insets = geo.safeAreaInsets
+            let w = geo.size.width + insets.leading + insets.trailing
+            let h = geo.size.height + insets.top + insets.bottom
             let edge = M.edge
             let titleY = h - M.title
             // Fila del título: 44 pt de alto (lo que miden los botones).
             let artBottom = titleY - 22 - M.artGap
-            let artTop = geo.safeAreaInsets.top + 14
+            let artTop = insets.top + 14
             let side = max(120, min(w - 2 * M.artSide, artBottom - artTop))
             let art = CGRect(x: (w - side) / 2, y: artBottom - side, width: side, height: side)
             // La hoja sube desde el borde superior del miniplayer.
@@ -47,7 +50,7 @@ struct NowPlayingView: View {
                         .fill(.white.opacity(0.25))
                         .frame(width: 36, height: 5)
                         .blendMode(.plusLighter)
-                        .position(x: w / 2, y: max(geo.safeAreaInsets.top - 8, 10))
+                        .position(x: w / 2, y: max(insets.top - 8, 10))
 
                     // El "…" acaba en el margen: la fila va 7,5 pt más allá (el círculo de 31 pt va centrado en 44).
                     TitleRow(player: player)
@@ -112,8 +115,9 @@ struct NowPlayingView: View {
                         }
                     }
             )
+            .offset(x: -insets.leading, y: -insets.top)
         }
-        .ignoresSafeArea()
+        .onAppear { sheet.appeared() }
         .foregroundStyle(.white)
         .presentationBackground(.clear)
         // La hoja siempre es oscura: barra de estado y menús en blanco.

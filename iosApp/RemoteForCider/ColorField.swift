@@ -108,6 +108,7 @@ struct ColorField: View {
     @State private var switchedAt = Date.distantPast
     @State private var start = Date()
 
+    private static let downscale = 6.0
     private static let periods: [Double] = [31, 37, 43, 29]
     private static let phases: [Double] = [0, 1.9, 3.7, 5.1]
 
@@ -118,8 +119,11 @@ struct ColorField: View {
             let t = now.timeIntervalSince(start)
             let mix = min(max(now.timeIntervalSince(switchedAt) / 1.2, 0), 1)
             GeometryReader { geo in
-                let w = Double(geo.size.width)
-                let h = Double(geo.size.height)
+                // Se pinta a 1/6 de tamaño y se amplía: son degradados muy suaves (no se nota) y así
+                // cuesta 36 veces menos rellenar la pantalla en cada fotograma.
+                let k = Self.downscale
+                let w = Double(geo.size.width) / k
+                let h = Double(geo.size.height) / k
                 ZStack {
                     color(0, mix).color
                     ForEach(0..<4, id: \.self) { i in
@@ -130,8 +134,10 @@ struct ColorField: View {
                 }
                 .frame(width: CGFloat(w), height: CGFloat(h))
                 .clipped()
+                .drawingGroup()
+                .scaleEffect(CGFloat(k), anchor: .topLeading)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             }
-            .drawingGroup()
         }
         .task(id: url) {
             let fallback = Self.fallback(artwork?.bgColor)
