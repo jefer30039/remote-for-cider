@@ -12,6 +12,7 @@ Cider de casa, así que este servidor hace de Cider con respuestas reales grabad
 - Lo que no está grabado responde 404 y se anota como "FALTA" en la salida, para grabarlo después
   con record.py.
 - Acepta cualquier token; /api/v2/auth/request aprueba al momento con el token "demo".
+- POST /demo/reset vuelve a la canción y el segundo del arranque (demo.sh lo llama antes de cada captura).
 """
 import argparse
 import asyncio
@@ -85,6 +86,16 @@ class Player:
         self._pos = position
         self._at = time.monotonic()
         self.sockets: set[web.WebSocketResponse] = set()
+        self._initial = (copy.deepcopy(self.track), copy.deepcopy(self.queue), self.index, playing, position, self.volume)
+
+    async def reset(self):
+        """Vuelve al estado del arranque (lo llama demo.sh antes de cada captura: si no, la canción de
+        demostración acaba durante los minutos que tarda el simulador y suena otra)."""
+        track, queue, self.index, self.playing, position, self.volume = copy.deepcopy(self._initial)
+        self.track, self.queue = track, queue
+        self.set_position(position)
+        await self.emit("playbackStatus.nowPlayingItemDidChange", self.track)
+        await self.state_changed()
 
     # --- Tiempo ---
     @property
@@ -232,6 +243,9 @@ def make_app(fx: Fixtures, player: Player) -> web.Application:
                     items = json.loads(found[1])["data"]["items"]
                     return page(items, offset, limit)
         else:
+            if path == "/demo/reset":
+                await p.reset()
+                return ok()
             if path == "/api/v2/auth/request":
                 return ok({"token": "demo", "scopes": b.get("scopes", [])})
             if path in ("/api/v2/playback/play", "/api/v2/playback/pause", "/api/v2/playback/toggle",

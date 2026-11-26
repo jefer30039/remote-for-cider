@@ -48,8 +48,13 @@ echo "::endgroup::"
 CONNECTED=(-ciderHost 127.0.0.1 -ciderPort 10767 -ciderToken demo)
 SPANISH=(-AppleLanguages "(es)" -AppleLocale es_ES)
 
+reset_demo() {
+  curl -sf -X POST http://127.0.0.1:10767/demo/reset >/dev/null || echo "No se pudo reiniciar el Cider de demostración"
+}
+
 launch() {
   xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
+  reset_demo
   xcrun simctl launch "$UDID" "$BID" "$@" >/dev/null
 }
 
@@ -82,7 +87,7 @@ xcrun simctl ui "$UDID" appearance light
 shot 01-conectar-es 5 "${SPANISH[@]}"
 shot 02-inicio-miniplayer-es 8 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab home
 shot 03-biblioteca-albumes-es 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab library
-shot 04-reproduccion-es 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES
+shot 04-reproduccion-es 14 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES
 shot 05-conectar-en 5
 xcrun simctl ui "$UDID" appearance dark
 shot 06-biblioteca-albumes-oscuro-es 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab library
@@ -94,6 +99,7 @@ video 11-arranque-biblioteca 8 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab librar
 flow() {
   local name=$1 test=$2
   xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
+  reset_demo
   xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$OUT/$name.mp4" 2>/dev/null &
   local rec=$!
   sleep 1.5
