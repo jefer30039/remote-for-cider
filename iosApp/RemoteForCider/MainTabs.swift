@@ -10,8 +10,7 @@ struct MainTabs: View {
     @Environment(RemoteStore.self) private var store
     // `-demoTab library` / `-demoOpenPlayer YES`: para las capturas del simulador en CI.
     @State private var tab = AppTab(rawValue: UserDefaults.standard.string(forKey: "demoTab") ?? "") ?? .home
-    @State private var showPlayer = UserDefaults.standard.bool(forKey: "demoOpenPlayer")
-    @Namespace private var playerZoom
+    @State private var sheet = PlayerSheet(open: UserDefaults.standard.bool(forKey: "demoOpenPlayer"))
 
     var body: some View {
         TabView(selection: $tab) {
@@ -33,15 +32,15 @@ struct MainTabs: View {
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
-            MiniPlayer { showPlayer = true }
-                .matchedTransitionSource(id: "player", in: playerZoom)
+            MiniPlayer { sheet.open() }
+                .environment(sheet)
         }
-        // La hoja sale del miniplayer y vuelve a él con el zoom del sistema (también al cerrarla
-        // deslizando hacia abajo, que lo da la propia transición).
-        .fullScreenCover(isPresented: $showPlayer) {
+        // Sin animación del sistema: la transición desde el miniplayer la hace la hoja (PlayerSheet).
+        .fullScreenCover(isPresented: $sheet.presented) {
             NowPlayingView()
-                .navigationTransition(.zoom(sourceID: "player", in: playerZoom))
+                .environment(sheet)
         }
+        .environment(sheet)
     }
 }
 

@@ -4,16 +4,22 @@ import SwiftUI
 /// caben carátula, título y reproducir; desplegado lleva también el artista y "siguiente".
 struct MiniPlayer: View {
     @Environment(RemoteStore.self) private var store
+    @Environment(PlayerSheet.self) private var sheet
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
     var open: () -> Void
+
+    static let artCorner: CGFloat = 6
 
     var body: some View {
         let track = store.player?.track
         let playing = store.player?.isPlaying ?? false
         let enabled = track != nil && store.link == .online
         HStack(spacing: 10) {
-            CoverImage(artwork: track?.artwork, pixels: 120, corner: 6)
+            CoverImage(artwork: track?.artwork, pixels: 120, corner: Self.artCorner)
                 .frame(width: 30, height: 30)
+                // De aquí sale volando la carátula de la hoja (y aquí vuelve): mientras está la hoja, no se ve.
+                .opacity(sheet.presented ? 0 : 1)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sheet.miniArt = $0 }
             VStack(alignment: .leading, spacing: 0) {
                 Text(track?.name ?? status)
                     .font(.subheadline.weight(.medium))

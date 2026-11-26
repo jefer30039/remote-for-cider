@@ -1,7 +1,8 @@
 import Shared
 import SwiftUI
 
-/// Hoja de reproducción de Apple Music en iOS 26 (iPhone).
+/// Hoja de reproducción de Apple Music en iOS 26 (iPhone). Se abre y se cierra con su propia
+/// transición desde el miniplayer (ver `PlayerSheet`).
 ///
 /// Las piezas van a distancias fijas del borde inferior, medidas en una captura de iPhone (centros
 /// desde abajo, en pt): título 355, barra de progreso 289, controles 199, volumen 112 y la fila de
@@ -14,6 +15,7 @@ import SwiftUI
 /// tiempos +70, pista +46.
 struct NowPlayingView: View {
     @Environment(RemoteStore.self) private var store
+    @Environment(PlayerSheet.self) private var sheet
 
     var body: some View {
         let player = store.player
@@ -28,52 +30,92 @@ struct NowPlayingView: View {
             let artBottom = titleY - 22 - M.artGap
             let artTop = geo.safeAreaInsets.top + 14
             let side = max(120, min(w - 2 * M.artSide, artBottom - artTop))
+            let art = CGRect(x: (w - side) / 2, y: artBottom - side, width: side, height: side)
+            // La hoja sube desde el borde superior del miniplayer.
+            let distance = sheet.miniArt == .zero ? h * 0.85 : max(sheet.miniArt.minY - 9, 0)
             ZStack(alignment: .topLeading) {
-                Capsule()
-                    .fill(.white.opacity(0.25))
-                    .frame(width: 36, height: 5)
-                    .blendMode(.plusLighter)
-                    .position(x: w / 2, y: max(geo.safeAreaInsets.top - 8, 10))
+                // La página de debajo se oscurece mientras la hoja sube.
+                Color.black.opacity(0.9 * min(max(sheet.progress, 0), 1))
+                    .allowsHitTesting(false)
 
-                CoverImage(artwork: track?.artwork, pixels: 1200, corner: 10)
-                    .frame(width: side, height: side)
-                    .shadow(color: .black.opacity(0.3), radius: 22, y: 10)
-                    // Como iOS: la carátula se encoge al pausar y vuelve con un muelle.
-                    .scaleEffect(playing ? 1 : 0.78)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.72), value: playing)
-                    .position(x: w / 2, y: artBottom - side / 2)
+                ColorField(artwork: track?.artwork)
+                    .frame(width: w, height: h)
+                    .modifier(SheetFade(progress: sheet.progress, distance: distance, from: 0, to: 0.5))
 
-                // El "…" acaba en el margen: la fila va 7,5 pt más allá (el círculo de 31 pt va centrado en 44).
-                TitleRow(player: player)
-                    .frame(width: w - 2 * edge + 7.5, height: 44)
-                    .position(x: edge + (w - 2 * edge + 7.5) / 2, y: titleY)
+                ZStack(alignment: .topLeading) {
+                    Capsule()
+                        .fill(.white.opacity(0.25))
+                        .frame(width: 36, height: 5)
+                        .blendMode(.plusLighter)
+                        .position(x: w / 2, y: max(geo.safeAreaInsets.top - 8, 10))
 
-                // La barra va centrada en los 44 pt de arriba y los tiempos debajo: la caja mide 50 pt
-                // y el centro de la barra queda 3 pt por encima del de la caja.
-                TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-                    ScrubBar(
-                        position: player?.progress.positionNow() ?? 0,
-                        duration: player?.progress.durationSec ?? 0
-                    ) { store.seek(to: $0) }
+                    // El "…" acaba en el margen: la fila va 7,5 pt más allá (el círculo de 31 pt va centrado en 44).
+                    TitleRow(player: player)
+                        .frame(width: w - 2 * edge + 7.5, height: 44)
+                        .position(x: edge + (w - 2 * edge + 7.5) / 2, y: titleY)
+
+                    // La barra va centrada en los 44 pt de arriba y los tiempos debajo: la caja mide 50 pt
+                    // y el centro de la barra queda 3 pt por encima del de la caja.
+                    TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                        ScrubBar(
+                            position: player?.progress.positionNow() ?? 0,
+                            duration: player?.progress.durationSec ?? 0
+                        ) { store.seek(to: $0) }
+                    }
+                    .frame(width: w - 2 * edge, height: 50)
+                    .position(x: w / 2, y: h - M.progress + 3)
+
+                    transport(playing: playing, width: w)
+                        .position(x: w / 2, y: h - M.controls)
+
+                    VolumeRow(volume: player?.volume ?? 0) { store.setVolume($0) }
+                        .frame(width: w - 2 * edge, height: 44)
+                        .position(x: w / 2, y: h - M.volume)
+
+                    bottomRow(width: w)
+                        .position(x: w / 2, y: h - M.bottom)
                 }
-                .frame(width: w - 2 * edge, height: 50)
-                .position(x: w / 2, y: h - M.progress + 3)
+                .frame(width: w, height: h)
+                .modifier(SheetFade(progress: sheet.progress, distance: distance))
 
-                transport(playing: playing, width: w)
-                    .position(x: w / 2, y: h - M.controls)
-
-                VolumeRow(volume: player?.volume ?? 0) { store.setVolume($0) }
-                    .frame(width: w - 2 * edge, height: 44)
-                    .position(x: w / 2, y: h - M.volume)
-
-                bottomRow(width: w)
-                    .position(x: w / 2, y: h - M.bottom)
+                // La carátula vuela desde la miniatura del miniplayer; en pausa se encoge a 0,78 con
+                // un muelle (iOS). Debajo, la de 120 px del miniplayer mientras carga la grande.
+                ZStack {
+                    CoverImage(artwork: track?.artwork, pixels: 120, corner: 0)
+                    CoverImage(artwork: track?.artwork, pixels: 1200, corner: 0, placeholder: false)
+                }
+                .modifier(ArtFlight(
+                    progress: sheet.progress, scale: playing ? 1 : 0.78,
+                    from: sheet.miniArt, to: art, fromCorner: MiniPlayer.artCorner, toCorner: 10
+                ))
+                .animation(.spring(response: 0.5, dampingFraction: 0.72), value: playing)
+                .allowsHitTesting(false)
             }
             .frame(width: w, height: h)
+            .contentShape(Rectangle())
+            // Deslizar hacia abajo cierra: la hoja sigue al dedo y, al soltar, decide por la
+            // velocidad proyectada (como iOS) si cierra o vuelve.
+            .gesture(
+                DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                    .onChanged { v in
+                        guard sheet.presented, distance > 0 else { return }
+                        var t = Transaction()
+                        t.disablesAnimations = true
+                        withTransaction(t) { sheet.progress = 1 - max(v.translation.height, 0) / distance }
+                    }
+                    .onEnded { v in
+                        let projected = max(v.predictedEndTranslation.height, v.translation.height)
+                        if projected > distance * 0.35 {
+                            sheet.close(animation: .smooth(duration: 0.35))
+                        } else {
+                            sheet.settle()
+                        }
+                    }
+            )
         }
         .ignoresSafeArea()
         .foregroundStyle(.white)
-        .background { ColorField(artwork: track?.artwork).ignoresSafeArea() }
+        .presentationBackground(.clear)
         // La hoja siempre es oscura: barra de estado y menús en blanco.
         .preferredColorScheme(.dark)
     }

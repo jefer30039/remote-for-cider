@@ -6,11 +6,15 @@ struct CoverImage: View {
     let artwork: Shared.Artwork?
     var pixels: Int32 = 600
     var corner: CGFloat = 8
+    /// Sin carga: el color de fondo con una nota (falso: transparente, para poner una carátula pequeña debajo).
+    var placeholder = true
 
     var body: some View {
         AsyncImage(url: artwork?.sized(px: pixels).flatMap { URL(string: $0) }) { phase in
             if let image = phase.image {
                 image.resizable().scaledToFill()
+            } else if !placeholder {
+                Color.clear
             } else {
                 Rectangle()
                     .fill(Color(hex: artwork?.bgColor) ?? Color(.secondarySystemFill))
