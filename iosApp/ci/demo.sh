@@ -104,6 +104,7 @@ shot 01-conectar-es 5 "${SPANISH[@]}"
 shot 02-inicio-miniplayer-es 8 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab home
 shot 03-biblioteca-albumes-es 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab library
 shot 04-reproduccion-es 14 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES
+shot 07-letra-es 16 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES -demoLyrics YES
 shot 05-conectar-en 5
 xcrun simctl ui "$UDID" appearance dark
 shot 06-biblioteca-albumes-oscuro-es 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab library
@@ -130,6 +131,7 @@ flow() {
 if [ -n "$XCTESTRUN" ]; then
   flow 20-recorrido-desplazar-minimiza-barra testScrollMinimizesTabBar
   flow 21-recorrido-abrir-y-cerrar-hoja testOpenAndClosePlayer
+  flow 23-recorrido-letra testLyrics
   flow 22-recorrido-pantalla-bloqueo testLockScreen
 fi
 

@@ -49,6 +49,32 @@ final class DemoFlows: XCTestCase {
         sleep(3)
     }
 
+    /// Letra: abrir la hoja, pasar a la letra y dejarla correr (barrido por sílaba, cambio de línea),
+    /// arrastrarla, esperar a que vuelva sola, tocar una línea y volver a la carátula.
+    func testLyrics() {
+        let app = launch(["-demoTab", "library"])
+        let mini = app.otherElements["miniPlayer"]
+        XCTAssertTrue(mini.waitForExistence(timeout: 10))
+        sleep(3)
+        mini.tap()
+        sleep(2)
+        let lyrics = app.buttons["lyricsButton"]
+        XCTAssertTrue(lyrics.waitForExistence(timeout: 5))
+        lyrics.tap()
+        sleep(14)   // los controles se repliegan a los 4 s
+        save("50-letra")
+        let middle = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+        middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(CGVector(dx: 0, dy: -250)))
+        sleep(1)
+        save("51-letra-arrastrada")
+        sleep(5)    // vuelve a seguir la canción
+        save("52-letra-vuelve")
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97)).tap()
+        sleep(1)
+        if lyrics.waitForExistence(timeout: 3) { lyrics.tap() }
+        sleep(3)
+    }
+
     /// Pantalla de bloqueo: con la app conectada (suena el silencio), bloquear y despertar el simulador
     /// para ver el reproductor del sistema con la canción de Cider. Guarda capturas en `DEMO_OUT`
     /// (`TEST_RUNNER_DEMO_OUT` en xcodebuild) además de adjuntarlas a la prueba.

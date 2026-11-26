@@ -1,5 +1,6 @@
 import Shared
 import SwiftUI
+import UIKit
 
 /// Hoja de reproducción de Apple Music en iOS 26 (iPhone). Se abre y se cierra con su propia
 /// transición desde el miniplayer (ver `PlayerSheet`).
@@ -17,12 +18,24 @@ struct NowPlayingView: View {
     @Environment(RemoteStore.self) private var store
     @Environment(PlayerSheet.self) private var sheet
 
+    enum Mode { case artwork, lyrics }
+    /// `-demoLyrics YES`: la hoja abre en la letra (capturas de CI).
+    @State private var mode: Mode = UserDefaults.standard.bool(forKey: "demoLyrics") ? .lyrics : .artwork
+    /// Con la letra y sonando, los controles se repliegan a los 4 s sin tocar nada (Apple Music).
+    @State private var controlsHidden = false
+    @State private var touches = 0
+
+    private static let modeChange = Animation.spring(response: 0.5, dampingFraction: 0.86)
+
     var body: some View {
         let player = store.player
         let track = player?.track
         let playing = player?.isPlaying ?? false
-        // Portada animada, en cuanto está su fotograma fijo (antes, la tarjeta de siempre).
-        let hero = store.covers.current.flatMap { $0.image == nil ? nil : $0 }
+        let lyrics = mode == .lyrics
+        // Portada animada, en cuanto está su fotograma fijo (antes, la tarjeta de siempre). Con la
+        // letra no: el vídeo se funde y queda el fondo de colores con la carátula en la cabecera.
+        let hero = lyrics ? nil : store.covers.current.flatMap { $0.image == nil ? nil : $0 }
+        let hideControls = lyrics && controlsHidden
         // El lector respeta el área segura (así da sus márgenes) y el contenido la cubre entera: se
         // coloca en coordenadas de pantalla, las mismas de la miniatura del miniplayer.
         GeometryReader { geo in
@@ -35,7 +48,11 @@ struct NowPlayingView: View {
             let artBottom = titleY - 22 - M.artGap
             let artTop = insets.top + 14
             let side = max(120, min(w - 2 * M.artSide, artBottom - artTop))
-            let art = CGRect(x: (w - side) / 2, y: artBottom - side, width: side, height: side)
+            let card = CGRect(x: (w - side) / 2, y: artBottom - side, width: side, height: side)
+            // Cabecera de la letra (Android, medida en Apple Music): carátula de 70 pt a 28 pt del borde,
+            // 30 pt bajo la barra de estado; la cabecera mide 120 pt.
+            let header = CGRect(x: 28, y: insets.top + 30, width: 70, height: 70)
+            let art = lyrics ? header : card
             // La hoja sube desde el borde superior del miniplayer.
             let distance = sheet.miniArt == .zero ? h * 0.85 : max(sheet.miniArt.minY - 9, 0)
             ZStack(alignment: .topLeading) {
@@ -74,6 +91,56 @@ struct NowPlayingView: View {
                     .transition(.opacity)
                 }
 
+                if lyrics {
+                    // La letra sube por debajo de la cabecera y se desvanece al llegar a ella; la parte de
+                    // arriba de la línea activa queda 34 pt bajo la cabecera.
+                    let bottom = hideControls ? h - 40 : h - M.progress - 34
+                    LyricsPanel(player: player, anchorTop: insets.top + 154)
+                        .frame(width: w, height: max(bottom, 1))
+                        .mask {
+                            LinearGradient(stops: [.init(color: .clear, location: (insets.top + 72) / max(bottom, 1)),
+                                                   .init(color: .black, location: (insets.top + 134) / max(bottom, 1)),
+                                                   .init(color: .black, location: 0.9),
+                                                   .init(color: .clear, location: 1)],
+                                           startPoint: .top, endPoint: .bottom)
+                        }
+                        .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance))
+                        .transition(.opacity)
+
+                    // Título, artista y "…" junto a la carátula pequeña; la franja entera es de la
+                    // cabecera (deslizar ahí cierra la hoja, no mueve la letra).
+                    ZStack(alignment: .topLeading) {
+                        Color.clear.contentShape(Rectangle())
+                            .frame(width: w, height: insets.top + 120)
+                        HStack(spacing: 0) {
+                            Color.clear
+                                .frame(width: 70, height: 70)
+                                .contentShape(Rectangle())
+                                .onTapGesture { withAnimation(Self.modeChange) { mode = .artwork } }
+                                .accessibilityLabel("Show Artwork")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(track?.name ?? " ")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .lineLimit(1)
+                                    .vibrant(Vibrancy.title)
+                                Text(track?.artistName ?? " ")
+                                    .font(.system(size: 17))
+                                    .lineLimit(1)
+                                    .vibrant(Vibrancy.artist)
+                            }
+                            .padding(.horizontal, 14)
+                            Spacer(minLength: 0)
+                            MoreMenu(player: player)
+                        }
+                        .padding(.leading, 28)
+                        .padding(.trailing, 24 - 6.5)
+                        .frame(width: w, height: 70)
+                        .offset(y: insets.top + 30)
+                    }
+                    .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance))
+                    .transition(.opacity)
+                }
+
                 ZStack(alignment: .topLeading) {
                     Capsule()
                         .fill(.white.opacity(0.25))
@@ -85,6 +152,10 @@ struct NowPlayingView: View {
                     TitleRow(player: player)
                         .frame(width: w - 2 * edge + 7.5, height: 44)
                         .position(x: edge + (w - 2 * edge + 7.5) / 2, y: titleY)
+                        .opacity(lyrics ? 0 : 1)
+                        .allowsHitTesting(!lyrics)
+
+                    Group {
 
                     // La barra va centrada en los 44 pt de arriba y los tiempos debajo: la caja mide 50 pt
                     // y el centro de la barra queda 3 pt por encima del de la caja.
@@ -106,6 +177,10 @@ struct NowPlayingView: View {
 
                     bottomRow(width: w)
                         .position(x: w / 2, y: h - M.bottom)
+                    }
+                    .opacity(hideControls ? 0 : 1)
+                    .offset(y: hideControls ? 30 : 0)
+                    .allowsHitTesting(!hideControls)
                 }
                 .frame(width: w, height: h)
                 .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance))
@@ -117,16 +192,19 @@ struct NowPlayingView: View {
                     CoverImage(artwork: track?.artwork, pixels: 1200, corner: 0, placeholder: false)
                 }
                 .modifier(ArtFlight(
-                    progress: sheet.progress, scale: playing ? 1 : 0.78, drag: sheet.drag,
-                    from: sheet.miniArt, to: art, fromCorner: MiniPlayer.artCorner, toCorner: 10
+                    progress: sheet.progress, scale: playing || lyrics ? 1 : 0.78, drag: sheet.drag,
+                    from: sheet.miniArt, to: art, fromCorner: MiniPlayer.artCorner, toCorner: lyrics ? 6 : 10
                 ))
                 .animation(.spring(response: 0.5, dampingFraction: 0.72), value: playing)
                 .allowsHitTesting(false)
                 .transition(.opacity) }
             }
             .animation(.easeInOut(duration: 0.4), value: hero?.video)
+            .animation(.easeInOut(duration: 0.35), value: hideControls)
             .frame(width: w, height: h)
             .contentShape(Rectangle())
+            // Cualquier toque devuelve los controles (sin quitárselo a quien lo reciba).
+            .simultaneousGesture(TapGesture().onEnded { touches += 1 })
             // Deslizar hacia abajo cierra: la hoja entera baja con el dedo y, al soltar, decide por la
             // velocidad proyectada (como iOS) si se recoge en el miniplayer o vuelve arriba.
             .gesture(
@@ -147,6 +225,15 @@ struct NowPlayingView: View {
             .offset(x: -insets.leading, y: -insets.top)
         }
         .onAppear { sheet.appeared() }
+        .task(id: "\(mode)-\(store.player?.isPlaying == true)-\(touches)") {
+            controlsHidden = false
+            guard mode == .lyrics, store.player?.isPlaying == true else { return }
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { controlsHidden = true }
+        }
+        // Con la letra a la vista la pantalla no se apaga.
+        .onChange(of: mode) { _, m in UIApplication.shared.isIdleTimerDisabled = m == .lyrics }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         .foregroundStyle(.white)
         .presentationBackground(.clear)
         // La hoja siempre es oscura: barra de estado y menús en blanco.
@@ -184,8 +271,11 @@ struct NowPlayingView: View {
     /// Letra · equipo · cola, centros a 111 pt.
     private func bottomRow(width: CGFloat) -> some View {
         ZStack {
-            SheetIcon("quote.bubble", label: "Lyrics") {}
-                .offset(x: -M.bottomSpacing)
+            SheetIcon(mode == .lyrics ? "quote.bubble.fill" : "quote.bubble", label: "Lyrics") {
+                withAnimation(Self.modeChange) { mode = mode == .lyrics ? .artwork : .lyrics }
+            }
+            .offset(x: -M.bottomSpacing)
+            .accessibilityIdentifier("lyricsButton")
             SheetIcon("laptopcomputer", label: "Computer") {}
             SheetIcon("list.bullet", label: "Up Next") {}
                 .offset(x: M.bottomSpacing)

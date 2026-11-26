@@ -106,16 +106,20 @@ struct ArtFlight: ViewModifier, Animatable {
     /// La hoja bajada con el dedo: la carátula baja con ella.
     var drag: Double = 0
     let from: CGRect
-    let to: CGRect
+    /// Destino: la tarjeta grande o la carátula pequeña de la cabecera de la letra. También se anima
+    /// (la carátula vuela de una a otra al cambiar de modo).
+    var to: CGRect
     let fromCorner: CGFloat
-    let toCorner: CGFloat
+    var toCorner: CGFloat
 
-    var animatableData: AnimatablePair<AnimatablePair<Double, Double>, Double> {
-        get { AnimatablePair(AnimatablePair(progress, scale), drag) }
+    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<Double, Double>, AnimatablePair<Double, CGFloat>>, CGRect.AnimatableData> {
+        get { AnimatablePair(AnimatablePair(AnimatablePair(progress, scale), AnimatablePair(drag, toCorner)), to.animatableData) }
         set {
-            progress = newValue.first.first
-            scale = newValue.first.second
-            drag = newValue.second
+            progress = newValue.first.first.first
+            scale = newValue.first.first.second
+            drag = newValue.first.second.first
+            toCorner = newValue.first.second.second
+            to.animatableData = newValue.second
         }
     }
 
