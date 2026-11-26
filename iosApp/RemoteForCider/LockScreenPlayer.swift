@@ -58,7 +58,7 @@ final class LockScreenPlayer {
             startSilence()
         } else {
             silence?.stop()
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            Self.audioQueue.async { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             MPNowPlayingInfoCenter.default().playbackState = .stopped
             shownKey = nil
@@ -103,18 +103,34 @@ final class LockScreenPlayer {
 
     // MARK: - Silencio
 
+    /// La sesión de audio se activa fuera del hilo principal: `setActive` es síncrono y puede tardar
+    /// (iOS lo marca como "AVAudioSession Hang Risk" si se hace en el principal).
+    private static let audioQueue = DispatchQueue(label: "silencio", qos: .userInitiated)
+
     private func startSilence() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
-            try session.setActive(true)
-            if silence == nil {
-                silence = try AVAudioPlayer(data: Self.silentWav(seconds: 2))
-                silence?.numberOfLoops = -1
+        Self.audioQueue.async { [weak self] in
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .default, options: [])
+                try session.setActive(true)
+            } catch {
+                print("LockScreenPlayer: no se pudo activar la sesión de audio: \(error)")
+                return
             }
-            silence?.play()
-        } catch {
-            print("LockScreenPlayer: no se pudo poner el silencio: \(error)")
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.active else { return }
+                    do {
+                        if self.silence == nil {
+                            self.silence = try AVAudioPlayer(data: Self.silentWav(seconds: 2))
+                            self.silence?.numberOfLoops = -1
+                        }
+                        self.silence?.play()
+                    } catch {
+                        print("LockScreenPlayer: no se pudo poner el silencio: \(error)")
+                    }
+                }
+            }
         }
     }
 

@@ -69,6 +69,26 @@ final class DemoFlows: XCTestCase {
         save("40-pantalla-bloqueo")
         sleep(6)
         save("41-pantalla-bloqueo-despues")
+        // ¿Están los botones del reproductor aunque no se vean? Árbol de accesibilidad de SpringBoard.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        write("42-pantalla-bloqueo-accesibilidad.txt", springboard.debugDescription)
+        // Si hay botón de pausa, tocarlo: la orden debe llegar al Cider de demostración (fake-cider.log).
+        let pause = springboard.buttons.matching(NSPredicate(format: "label IN %@", ["Pause", "Pausa", "Pausar"])).firstMatch
+        if pause.waitForExistence(timeout: 3) {
+            pause.tap()
+            sleep(3)
+            save("43-pantalla-bloqueo-tras-pausa")
+        }
+    }
+
+    private func write(_ name: String, _ text: String) {
+        let attachment = XCTAttachment(string: text)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let dir = ProcessInfo.processInfo.environment["DEMO_OUT"] {
+            try? text.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
     }
 
     private func save(_ name: String) {
