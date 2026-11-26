@@ -75,6 +75,56 @@ final class DemoFlows: XCTestCase {
         sleep(3)
     }
 
+    /// Liquid Glass teñido (Ajustes › Pantalla y brillo › Liquid Glass › Teñido, iOS 26.1+): se activa en
+    /// los Ajustes del simulador y se repiten las capturas de la barra, el miniplayer y la hoja para
+    /// compararlas con las de siempre (transparente). Va el último: deja el ajuste cambiado.
+    func testTintedGlass() {
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        settings.launch()
+        sleep(2)
+        save("60-ajustes")
+        func open(_ labels: [String], in app: XCUIApplication) -> Bool {
+            for label in labels {
+                let candidates = [app.cells.staticTexts[label], app.buttons[label], app.staticTexts[label]]
+                for element in candidates {
+                    var tries = 0
+                    while !element.exists && tries < 6 { app.swipeUp(velocity: .slow); tries += 1 }
+                    if element.exists {
+                        element.tap()
+                        sleep(2)
+                        return true
+                    }
+                    // Volver arriba antes de probar el siguiente nombre.
+                    for _ in 0..<6 { app.swipeDown(velocity: .fast) }
+                }
+            }
+            return false
+        }
+        let display = open(["Display & Brightness", "Pantalla y brillo"], in: settings)
+        save("61-ajustes-pantalla")
+        let glass = display && open(["Liquid Glass"], in: settings)
+        save("62-ajustes-liquid-glass")
+        let tinted = glass && open(["Tinted", "Teñido"], in: settings)
+        save("63-ajustes-tenido")
+        write("64-ajustes-arbol.txt", settings.debugDescription)
+        guard tinted else {
+            XCTFail("No se encontró el ajuste de Liquid Glass (pantalla: \(display), liquid glass: \(glass))")
+            return
+        }
+        settings.terminate()
+
+        var app = launch(["-demoTab", "home"])
+        sleep(8)
+        save("65-tenido-inicio")
+        app = launch(["-demoTab", "library"])
+        sleep(10)
+        save("66-tenido-biblioteca")
+        app = launch(["-demoOpenPlayer", "YES"])
+        sleep(12)
+        save("67-tenido-hoja")
+        _ = app
+    }
+
     /// Pantalla de bloqueo: con la app conectada (suena el silencio), bloquear y despertar el simulador
     /// para ver el reproductor del sistema con la canción de Cider. Guarda capturas en `DEMO_OUT`
     /// (`TEST_RUNNER_DEMO_OUT` en xcodebuild) además de adjuntarlas a la prueba.

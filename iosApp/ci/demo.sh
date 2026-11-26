@@ -133,6 +133,8 @@ if [ -n "$XCTESTRUN" ]; then
   flow 21-recorrido-abrir-y-cerrar-hoja testOpenAndClosePlayer
   flow 23-recorrido-letra testLyrics
   flow 22-recorrido-pantalla-bloqueo testLockScreen
+  # El último: deja Liquid Glass en teñido.
+  flow 24-recorrido-vidrio-tenido testTintedGlass
 fi
 
 # Registro de la app (println de shared incluido) para depurar lo que no se ve.
