@@ -1,0 +1,117 @@
+# App de iOS: compila shared (XCFramework con SKIE) y la app de SwiftUI en un runner macOS,
+# sube el .ipa sin firmar (se instala con SideStore) y, si está el secreto DEMO_FIXTURES_KEY,
+# capturas y vídeos del simulador contra un Cider de demostración (iosApp/Demo).
+name: iOS
+
+on:
+  push:
+    branches: [ios]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Versions
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes | grep iOS
+
+      - name: Shared tests (JVM)
+        run: ./gradlew :shared:jvmTest --console=plain --no-configuration-cache
+
+      - name: Shared.xcframework
+        run: ./gradlew :shared:assembleSharedReleaseXCFramework --console=plain --no-configuration-cache
+
+      - name: Xcode project (XcodeGen)
+        run: |
+          brew install xcodegen
+          cd iosApp && xcodegen generate
+
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild -project iosApp/RemoteForCider.xcodeproj -scheme RemoteForCider \
+            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/dd-sim build | tee build/xcodebuild-sim.log | grep -E "error|warning: .*\.swift|BUILD" || true
+          test -d build/dd-sim/Build/Products/Debug-iphonesimulator/RemoteForCider.app
+
+      - name: Build unsigned .ipa
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/RemoteForCider.xcodeproj -scheme RemoteForCider \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/dd-ios CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tee build/xcodebuild-ios.log | grep -E "error|BUILD" || true
+          mkdir -p build/ipa/Payload
+          cp -R build/dd-ios/Build/Products/Release-iphoneos/RemoteForCider.app build/ipa/Payload/
+          (cd build/ipa && zip -qry ../remote-for-cider-ios-unsigned.ipa Payload)
+          ls -la build/remote-for-cider-ios-unsigned.ipa
+
+      - name: Simulator screenshots and videos (demo Cider)
+        env:
+          DEMO_FIXTURES_KEY: ${{ secrets.DEMO_FIXTURES_KEY }}
+        run: |
+          if [ -z "$DEMO_FIXTURES_KEY" ]; then
+            echo "No DEMO_FIXTURES_KEY secret: skipping the demo screenshots."
+            exit 0
+          fi
+          iosApp/ci/demo.sh build/dd-sim/Build/Products/Debug-iphonesimulator/RemoteForCider.app build/demo
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-for-cider-ios-unsigned
+          path: build/remote-for-cider-ios-unsigned.ipa
+          retention-days: 30
+
+      # Muestran la biblioteca del usuario y letras: 7 días y se borran solos.
+      - name: Upload screenshots and videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-demo
+          path: build/demo
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            build/xcodebuild-*.log
+            shared/build/reports
+          retention-days: 7
+          if-no-files-found: ignore

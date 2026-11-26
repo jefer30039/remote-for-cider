@@ -16,6 +16,7 @@ reorderable = "3.1.0"
 haze = "2.0.1"
 kyantBackdrop = "2.0.1"
 kyantShapes = "1.2.1"
+skie = "0.10.16"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -58,3 +59,5 @@ android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+# Expone a Swift los Flow, las clases selladas y las funciones suspend con buena ergonomía (solo iOS).
+skie = { id = "co.touchlab.skie", version.ref = "skie" }

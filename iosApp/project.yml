@@ -1,0 +1,61 @@
+# Proyecto de Xcode generado con XcodeGen (no hay Mac: se genera en GitHub Actions).
+#   brew install xcodegen && cd iosApp && xcodegen
+# Antes hay que compilar el XCFramework de shared:
+#   ./gradlew :shared:assembleSharedReleaseXCFramework
+name: RemoteForCider
+options:
+  bundleIdPrefix: io.github.jefer30039
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  RemoteForCider:
+    type: application
+    platform: iOS
+    scheme: {}
+    sources:
+      - path: RemoteForCider
+    dependencies:
+      # Estático (isStatic = true en shared/build.gradle.kts): se enlaza, no se incrusta.
+      - framework: ../shared/build/XCFrameworks/release/Shared.xcframework
+        embed: false
+    info:
+      path: RemoteForCider/Info.plist
+      properties:
+        CFBundleDisplayName: Remote for Cider
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, es]
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        # Silencio en bucle mientras hay conexión: mantiene vivo el socket y da el reproductor
+        # de la pantalla de bloqueo (no va a la App Store).
+        UIBackgroundModes: [audio]
+        # Cider y el puente hablan HTTP plano en la red local.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Remote for Cider connects to Cider on your computer over the local network.
+        ITSAppUsesNonExemptEncryption: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.jefer30039.remoteforcider
+        PRODUCT_NAME: RemoteForCider
+        GENERATE_INFOPLIST_FILE: NO
+        # El framework estático de Kotlin/Native usa libc++.
+        OTHER_LDFLAGS: ["-lc++"]

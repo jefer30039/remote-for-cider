@@ -1,7 +1,10 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kmp.library)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.skie)
 }
 
 kotlin {
@@ -19,8 +22,15 @@ kotlin {
             }
         }
     }
-    iosArm64()
-    iosSimulatorArm64()
+    // iOS: XCFramework estático "Shared" que enlaza iosApp/ (se compila en GitHub Actions, macOS).
+    val xcf = XCFramework("Shared")
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+            xcf.add(this)
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {
