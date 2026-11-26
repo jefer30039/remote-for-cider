@@ -38,7 +38,8 @@ struct NowPlayingView: View {
             let distance = sheet.miniArt == .zero ? h * 0.85 : max(sheet.miniArt.minY - 9, 0)
             ZStack(alignment: .topLeading) {
                 // La página de debajo se oscurece mientras la hoja sube.
-                Color.black.opacity(0.9 * min(max(sheet.progress, 0), 1))
+                // Al bajarla con el dedo se aclara: se ve la página a la que se vuelve.
+                Color.black.opacity(0.9 * min(max(sheet.progress, 0), 1) * (1 - 0.6 * min(max(sheet.drag / h, 0), 1)))
                     .allowsHitTesting(false)
 
                 // Esquinas de la pantalla mientras sube o baja con el dedo; abierta, sin esquinas.
