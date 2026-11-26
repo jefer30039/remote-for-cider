@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 90
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
-      SIM_DEVICE: iPhone 18 Pro
+      SIM_DEVICE: iPhone 18 Pro Max   # el iPhone del usuario
       SIM_RUNTIME: iOS-27
     steps:
       - uses: actions/checkout@v4

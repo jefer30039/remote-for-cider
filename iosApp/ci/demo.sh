@@ -27,7 +27,7 @@ echo "::endgroup::"
 
 echo "::group::Simulador"
 # Simulador del runner (cambia con la imagen): SIM_DEVICE y SIM_RUNTIME (prefijo, p. ej. "iOS-27").
-SIM_DEVICE=${SIM_DEVICE:-iPhone 18 Pro}
+SIM_DEVICE=${SIM_DEVICE:-iPhone 18 Pro Max}
 SIM_RUNTIME=${SIM_RUNTIME:-iOS-27}
 UDID=$(xcrun simctl list devices available -j | SIM_DEVICE="$SIM_DEVICE" SIM_RUNTIME="$SIM_RUNTIME" python3 -c '
 import json, os, re, sys
@@ -43,7 +43,16 @@ for runtime, devices in json.load(sys.stdin)["devices"].items():
     for d in devices:
         if d["name"] == os.environ["SIM_DEVICE"] and (best is None or version > best[0]):
             best = (version, d["udid"])
-print(best[1])')
+print(best[1] if best else "")')
+if [ -z "$UDID" ]; then
+  # La imagen no trae ese modelo creado: se crea con el runtime más nuevo que encaje.
+  RUNTIME_ID=$(xcrun simctl list runtimes available -j | SIM_RUNTIME="$SIM_RUNTIME" python3 -c '
+import json, os, sys
+ids = [r["identifier"] for r in json.load(sys.stdin)["runtimes"] if os.environ["SIM_RUNTIME"] in r["identifier"]]
+print(sorted(ids)[-1] if ids else "")')
+  echo "Creando $SIM_DEVICE con $RUNTIME_ID"
+  UDID=$(xcrun simctl create "$SIM_DEVICE" "$SIM_DEVICE" "$RUNTIME_ID")
+fi
 echo "$SIM_DEVICE ($SIM_RUNTIME): $UDID"
 xcrun simctl boot "$UDID" || true
 xcrun simctl bootstatus "$UDID" -b
