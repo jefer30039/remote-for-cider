@@ -1,148 +1,251 @@
 import Shared
 import SwiftUI
 
-/// Hoja de reproducción (primera versión): carátula, título, progreso, controles y volumen sobre la
-/// carátula desenfocada. El vuelo desde el miniplayer, la portada animada y la letra vienen después.
+/// Hoja de reproducción de Apple Music en iOS 26 (iPhone).
+///
+/// Las piezas van a distancias fijas del borde inferior, medidas en una captura de iPhone (centros
+/// desde abajo, en pt): título 355, barra de progreso 289, controles 199, volumen 112 y la fila de
+/// abajo 64. La carátula ocupa lo que queda arriba, a 24 pt de los lados y 44 pt sobre el título; así
+/// nada se mueve con o sin portada animada, ni al pasar a la letra o la cola.
+///
+/// Texto, iconos y barras son blanco translúcido **sumado** a lo que hay detrás (`.plusLighter`),
+/// como la vibrancia de iOS 26: conservan el tono del fondo. Medido con "Mercury" de Steve Lacy,
+/// igual en los tres canales: título +192, artista +148, iconos +120, relleno de las barras +113,
+/// tiempos +70, pista +46.
 struct NowPlayingView: View {
     @Environment(RemoteStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let player = store.player
         let track = player?.track
         let playing = player?.isPlaying ?? false
         GeometryReader { geo in
-            let side = geo.size.width - 2 * Layout.margin
-            VStack(spacing: 0) {
+            let w = geo.size.width
+            let h = geo.size.height
+            let edge = M.edge
+            let titleY = h - M.title
+            // Fila del título: 44 pt de alto (lo que miden los botones).
+            let artBottom = titleY - 22 - M.artGap
+            let artTop = geo.safeAreaInsets.top + 14
+            let side = max(120, min(w - 2 * M.artSide, artBottom - artTop))
+            ZStack(alignment: .topLeading) {
                 Capsule()
-                    .fill(.white.opacity(0.35))
+                    .fill(.white.opacity(0.25))
                     .frame(width: 36, height: 5)
-                    .padding(.top, 6)
-                Spacer(minLength: 12)
-                CoverImage(artwork: track?.artwork, pixels: 1200, corner: 12)
+                    .blendMode(.plusLighter)
+                    .position(x: w / 2, y: max(geo.safeAreaInsets.top - 8, 10))
+
+                CoverImage(artwork: track?.artwork, pixels: 1200, corner: 10)
                     .frame(width: side, height: side)
-                    .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
-                    // Como iOS: la carátula se encoge al pausar.
+                    .shadow(color: .black.opacity(0.3), radius: 22, y: 10)
+                    // Como iOS: la carátula se encoge al pausar y vuelve con un muelle.
                     .scaleEffect(playing ? 1 : 0.78)
-                    .animation(.spring(response: 0.45, dampingFraction: 0.72), value: playing)
-                Spacer(minLength: 24)
-                VStack(spacing: 0) {
-                    titleRow(track)
-                    TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-                        ScrubBar(
-                            position: player?.progress.positionNow() ?? 0,
-                            duration: player?.progress.durationSec ?? 0
-                        ) { store.seek(to: $0) }
-                    }
-                    .padding(.top, 18)
-                    controls(playing: playing)
-                        .padding(.top, 26)
-                    VolumeBar(volume: player?.volume ?? 0) { store.setVolume($0) }
-                        .padding(.top, 30)
-                    bottomRow
-                        .padding(.top, 26)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.72), value: playing)
+                    .position(x: w / 2, y: artBottom - side / 2)
+
+                // El "…" acaba en el margen: la fila va 7,5 pt más allá (el círculo de 31 pt va centrado en 44).
+                TitleRow(player: player)
+                    .frame(width: w - 2 * edge + 7.5, height: 44)
+                    .position(x: edge + (w - 2 * edge + 7.5) / 2, y: titleY)
+
+                // La barra va centrada en los 44 pt de arriba y los tiempos debajo: la caja mide 50 pt
+                // y el centro de la barra queda 3 pt por encima del de la caja.
+                TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                    ScrubBar(
+                        position: player?.progress.positionNow() ?? 0,
+                        duration: player?.progress.durationSec ?? 0
+                    ) { store.seek(to: $0) }
                 }
-                .padding(.horizontal, Layout.margin)
-                .padding(.bottom, 12)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .foregroundStyle(.white)
-        .background { Backdrop(artwork: track?.artwork) }
-        .gesture(
-            DragGesture(minimumDistance: 20).onEnded { value in
-                if value.translation.height > 120 { dismiss() }
-            }
-        )
-    }
+                .frame(width: w - 2 * edge, height: 50)
+                .position(x: w / 2, y: h - M.progress + 3)
 
-    private func titleRow(_ track: Track?) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(track?.name ?? "")
-                        .font(.title3.weight(.semibold))
-                        .lineLimit(1)
-                    if track?.isExplicit == true {
-                        Image(systemName: "e.square.fill")
-                            .font(.footnote)
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                }
-                Text(track?.artistName ?? "")
-                    .font(.title3)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            Button {} label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 31, height: 31)
-                    .background(.white.opacity(0.15), in: Circle())
-            }
-        }
-    }
+                transport(playing: playing, width: w)
+                    .position(x: w / 2, y: h - M.controls)
 
-    private func controls(playing: Bool) -> some View {
-        HStack {
-            Spacer()
-            Button { store.previous() } label: {
-                Image(systemName: "backward.fill").font(.system(size: 34))
+                VolumeRow(volume: player?.volume ?? 0) { store.setVolume($0) }
+                    .frame(width: w - 2 * edge, height: 44)
+                    .position(x: w / 2, y: h - M.volume)
+
+                bottomRow(width: w)
+                    .position(x: w / 2, y: h - M.bottom)
             }
-            Spacer()
-            Button { store.togglePlay() } label: {
-                Image(systemName: playing ? "pause.fill" : "play.fill")
-                    .font(.system(size: 44))
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 60, height: 60)
-            }
-            .accessibilityIdentifier("playPause")
-            Spacer()
-            Button { store.next() } label: {
-                Image(systemName: "forward.fill").font(.system(size: 34))
-            }
-            Spacer()
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var bottomRow: some View {
-        HStack {
-            Image(systemName: "quote.bubble")
-            Spacer()
-            Image(systemName: "airplay.audio")
-            Spacer()
-            Image(systemName: "list.bullet")
-        }
-        .font(.title3)
-        .foregroundStyle(.white.opacity(0.6))
-        .padding(.horizontal, 30)
-    }
-
-    enum Layout {
-        static let margin: CGFloat = 32
-    }
-}
-
-/// Fondo provisional: la carátula muy desenfocada y oscurecida (el campo de color de Apple Music va después).
-private struct Backdrop: View {
-    let artwork: Shared.Artwork?
-
-    var body: some View {
-        ZStack {
-            Color(hex: artwork?.bgColor) ?? .black
-            CoverImage(artwork: artwork, pixels: 120, corner: 0)
-                .scaleEffect(1.6)
-                .blur(radius: 70)
-                .opacity(0.9)
-            Color.black.opacity(0.28)
+            .frame(width: w, height: h)
         }
         .ignoresSafeArea()
+        .foregroundStyle(.white)
+        .background { ColorField(artwork: track?.artwork).ignoresSafeArea() }
+        // La hoja siempre es oscura: barra de estado y menús en blanco.
+        .preferredColorScheme(.dark)
+    }
+
+    /// Anterior · reproducir/pausa · siguiente, centros separados 104 pt.
+    private func transport(playing: Bool, width: CGFloat) -> some View {
+        ZStack {
+            Button { store.previous() } label: {
+                Image(systemName: "backward.fill").font(.system(size: 30))
+                    .frame(width: 80, height: 80).contentShape(Circle())
+            }
+            .offset(x: -M.skipOffset)
+            .accessibilityLabel("Previous")
+            Button { store.togglePlay() } label: {
+                Image(systemName: playing ? "pause.fill" : "play.fill")
+                    .font(.system(size: 42))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 80, height: 80).contentShape(Circle())
+            }
+            .accessibilityLabel(playing ? Text("Pause") : Text("Play"))
+            .accessibilityIdentifier("playPause")
+            Button { store.next() } label: {
+                Image(systemName: "forward.fill").font(.system(size: 30))
+                    .frame(width: 80, height: 80).contentShape(Circle())
+            }
+            .offset(x: M.skipOffset)
+            .accessibilityLabel("Next")
+        }
+        .buttonStyle(.plain)
+        .frame(width: width, height: 80)
+    }
+
+    /// Letra · equipo · cola, centros a 111 pt.
+    private func bottomRow(width: CGFloat) -> some View {
+        ZStack {
+            SheetIcon("quote.bubble", label: "Lyrics") {}
+                .offset(x: -M.bottomSpacing)
+            SheetIcon("laptopcomputer", label: "Computer") {}
+            SheetIcon("list.bullet", label: "Up Next") {}
+                .offset(x: M.bottomSpacing)
+        }
+        .frame(width: width, height: 44)
+    }
+
+    /// Medidas (pt). Centros desde el borde inferior de la pantalla.
+    enum M {
+        static let edge: CGFloat = 33
+        static let artSide: CGFloat = 24
+        static let artGap: CGFloat = 44
+        static let title: CGFloat = 355
+        static let progress: CGFloat = 289
+        static let timesBelow: CGFloat = 21
+        static let controls: CGFloat = 199
+        static let skipOffset: CGFloat = 104
+        static let volume: CGFloat = 112
+        static let bottom: CGFloat = 64
+        static let bottomSpacing: CGFloat = 111
     }
 }
 
-/// Barra de progreso de Apple Music: fina, se ensancha al arrastrar; tiempos debajo.
+// MARK: - Vibrancia
+
+extension View {
+    /// Blanco con opacidad `alpha` sumado a lo que hay detrás (vibrancia de la hoja de iOS 26).
+    func vibrant(_ alpha: Double) -> some View {
+        foregroundStyle(.white.opacity(alpha)).blendMode(.plusLighter)
+    }
+}
+
+private enum Vibrancy {
+    static let title = 0.75
+    static let artist = 0.58
+    static let icon = 0.47
+    static let fill = 0.32
+    static let track = 0.18
+    static let time = 0.275
+}
+
+// MARK: - Título
+
+private struct TitleRow: View {
+    let player: PlayerState?
+
+    var body: some View {
+        let track = player?.track
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Text(track?.name ?? " ")
+                        .font(.system(size: 20, weight: .semibold))
+                        .lineLimit(1)
+                        .vibrant(Vibrancy.title)
+                    if track?.isExplicit == true {
+                        // El cuadro suma +46 y la letra queda recortada (se ve el fondo), como iOS.
+                        Image(systemName: "e.square.fill")
+                            .font(.system(size: 13))
+                            .vibrant(Vibrancy.track)
+                            .accessibilityLabel("Explicit")
+                    }
+                }
+                .frame(height: 24)
+                Text(track?.artistName ?? " ")
+                    .font(.system(size: 20))
+                    .lineLimit(1)
+                    .vibrant(Vibrancy.artist)
+                    .frame(height: 24)
+            }
+            Spacer(minLength: 0)
+            MoreMenu(player: player)
+        }
+    }
+}
+
+/// "…": favorita, biblioteca y aleatorio (Apple Music deja solo este botón junto al título).
+private struct MoreMenu: View {
+    @Environment(RemoteStore.self) private var store
+    let player: PlayerState?
+
+    var body: some View {
+        let loved = player?.inFavorites?.boolValue == true
+        Menu {
+            Button(loved ? LocalizedStringKey("Remove from Favorites") : LocalizedStringKey("Favorite"), systemImage: loved ? "star.slash" : "star") {
+                store.toggleLove()
+            }
+            if let inLibrary = player?.inLibrary?.boolValue {
+                if inLibrary {
+                    Button("Remove from Library", systemImage: "trash", role: .destructive) { store.toggleInLibrary() }
+                } else {
+                    Button("Add to Library", systemImage: "plus") { store.toggleInLibrary() }
+                }
+            }
+            Button(player?.shuffle == true ? LocalizedStringKey("Turn Off Shuffle") : LocalizedStringKey("Turn On Shuffle"), systemImage: "shuffle") {
+                store.toggleShuffle()
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 31, height: 31)
+                .glassEffect(.clear.interactive(), in: .circle)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .disabled(player?.track == nil)
+        .accessibilityLabel("More Options")
+    }
+}
+
+// MARK: - Barras
+
+/// Pista fina de iOS: sin pulgar, se ensancha mientras se arrastra. El relleno va encima de la pista
+/// en la misma capa y la capa entera se suma al fondo (0,32 + 0,18 · 0,68 = 0,44).
+private struct ThinTrack: View {
+    let fraction: Double
+    let active: Bool
+
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(Vibrancy.track))
+                Rectangle().fill(.white.opacity(active ? 0.6 : Vibrancy.fill))
+                    .frame(width: g.size.width * min(max(fraction, 0), 1))
+            }
+            .clipShape(Capsule())
+            .compositingGroup()
+            .blendMode(.plusLighter)
+        }
+        .frame(height: active ? 11 : 7)
+    }
+}
+
+/// Barra de progreso de Apple Music con los tiempos 21 pt por debajo de su centro.
 struct ScrubBar: View {
     let position: Double
     let duration: Double
@@ -151,74 +254,104 @@ struct ScrubBar: View {
 
     var body: some View {
         let shown = dragging ?? position
-        VStack(spacing: 6) {
+        VStack(spacing: 0) {
             GeometryReader { g in
-                let fraction = duration > 0 ? min(max(shown / duration, 0), 1) : 0
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.2))
-                    Capsule().fill(.white.opacity(dragging == nil ? 0.6 : 0.9))
-                        .frame(width: g.size.width * fraction)
-                }
-                .frame(height: dragging == nil ? 7 : 12)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { v in
-                            dragging = duration * min(max(v.location.x / max(g.size.width, 1), 0), 1)
-                        }
-                        .onEnded { _ in
-                            if let d = dragging { onSeek(d) }
-                            dragging = nil
-                        }
-                )
+                ThinTrack(fraction: duration > 0 ? shown / duration : 0, active: dragging != nil)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { v in
+                                dragging = duration * min(max(v.location.x / max(g.size.width, 1), 0), 1)
+                            }
+                            .onEnded { _ in
+                                if let d = dragging { onSeek(d) }
+                                dragging = nil
+                            }
+                    )
             }
-            .frame(height: 20)
+            .frame(height: 44)
+            // Centro de los tiempos 21 pt bajo el de la barra: 44 − 8 + 7 = 22 + 21.
             HStack {
                 Text(formatTime(shown))
                 Spacer()
-                Text("-" + formatTime(max(0, duration - shown)))
+                Text("\u{2212}" + formatTime(max(0, duration - shown)))
             }
-            .font(.caption.weight(.medium).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.45))
+            .font(.system(size: 11, weight: .medium).monospacedDigit())
+            .vibrant(Vibrancy.time)
+            .frame(height: 14)
+            .padding(.top, -8)
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dragging == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback position")
+        .accessibilityValue("\(formatTime(shown)) / \(formatTime(duration))")
     }
 }
 
-/// Volumen de Cider (no el del teléfono).
-struct VolumeBar: View {
+/// Volumen de Cider (no el del iPhone): altavoz pequeño, barra desde 24 pt del margen y altavoz
+/// grande, como la fila de volumen de Apple Music.
+private struct VolumeRow: View {
     let volume: Double
     let onChange: (Double) -> Void
     @State private var dragging: Double?
 
     var body: some View {
-        let shown = dragging ?? volume
-        HStack(spacing: 14) {
-            Image(systemName: "speaker.fill").font(.footnote)
+        HStack(spacing: 0) {
+            Image(systemName: "speaker.fill")
+                .font(.system(size: 13))
+                .frame(width: 20)
+                .offset(x: -3.7)
+                .vibrant(Vibrancy.icon)
             GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.2))
-                    Capsule().fill(.white.opacity(dragging == nil ? 0.6 : 0.9))
-                        .frame(width: g.size.width * min(max(shown, 0), 1))
-                }
-                .frame(height: dragging == nil ? 7 : 12)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { v in
-                            let value = min(max(v.location.x / max(g.size.width, 1), 0), 1)
-                            dragging = value
-                            onChange(value)
-                        }
-                        .onEnded { _ in dragging = nil }
-                )
+                ThinTrack(fraction: dragging ?? volume, active: dragging != nil)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { v in
+                                let value = min(max(v.location.x / max(g.size.width, 1), 0), 1)
+                                dragging = value
+                                onChange(value)
+                            }
+                            .onEnded { _ in dragging = nil }
+                    )
             }
-            .frame(height: 20)
-            Image(systemName: "speaker.wave.3.fill").font(.footnote)
+            .padding(.leading, 4)
+            .padding(.trailing, 13)
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.system(size: 13))
+                .frame(width: 19)
+                .vibrant(Vibrancy.icon)
         }
-        .foregroundStyle(.white.opacity(0.45))
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dragging == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Volume")
+        .accessibilityValue("\(Int((volume * 100).rounded())) %")
+    }
+}
+
+/// Icono de la fila de abajo (letra, equipo, cola).
+private struct SheetIcon: View {
+    let symbol: String
+    let label: LocalizedStringKey
+    let action: () -> Void
+
+    init(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) {
+        self.symbol = symbol
+        self.label = label
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 20))
+                .vibrant(Vibrancy.icon)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }

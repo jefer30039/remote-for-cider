@@ -11,6 +11,7 @@ struct MainTabs: View {
     // `-demoTab library` / `-demoOpenPlayer YES`: para las capturas del simulador en CI.
     @State private var tab = AppTab(rawValue: UserDefaults.standard.string(forKey: "demoTab") ?? "") ?? .home
     @State private var showPlayer = UserDefaults.standard.bool(forKey: "demoOpenPlayer")
+    @Namespace private var playerZoom
 
     var body: some View {
         TabView(selection: $tab) {
@@ -33,9 +34,13 @@ struct MainTabs: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             MiniPlayer { showPlayer = true }
+                .matchedTransitionSource(id: "player", in: playerZoom)
         }
+        // La hoja sale del miniplayer y vuelve a él con el zoom del sistema (también al cerrarla
+        // deslizando hacia abajo, que lo da la propia transición).
         .fullScreenCover(isPresented: $showPlayer) {
             NowPlayingView()
+                .navigationTransition(.zoom(sourceID: "player", in: playerZoom))
         }
     }
 }

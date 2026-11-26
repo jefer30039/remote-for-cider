@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Add to Library": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir a la biblioteca"
+          }
+        }
+      }
+    },
     "Already have a token?": {
       "localizations": {
         "es": {
@@ -51,6 +61,16 @@
         }
       }
     },
+    "Computer": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Computadora"
+          }
+        }
+      }
+    },
     "Computer address (e.g. 192.168.0.110)": {
       "localizations": {
         "es": {
@@ -87,6 +107,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "No se pudo conectar con Cider: %@"
+          }
+        }
+      }
+    },
+    "Explicit": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Explícito"
+          }
+        }
+      }
+    },
+    "Favorite": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir a favoritos"
           }
         }
       }
@@ -131,12 +171,42 @@
         }
       }
     },
+    "Lyrics": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Letra"
+          }
+        }
+      }
+    },
+    "More Options": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Más opciones"
+          }
+        }
+      }
+    },
     "New": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Nuevo"
+          }
+        }
+      }
+    },
+    "Next": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siguiente"
           }
         }
       }
@@ -171,12 +241,52 @@
         }
       }
     },
+    "Pause": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pausa"
+          }
+        }
+      }
+    },
+    "Play": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reproducir"
+          }
+        }
+      }
+    },
+    "Playback position": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Posición de reproducción"
+          }
+        }
+      }
+    },
     "Port": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Puerto"
+          }
+        }
+      }
+    },
+    "Previous": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anterior"
           }
         }
       }
@@ -201,6 +311,26 @@
         }
       }
     },
+    "Remove from Favorites": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitar de favoritos"
+          }
+        }
+      }
+    },
+    "Remove from Library": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitar de la biblioteca"
+          }
+        }
+      }
+    },
     "Search": {
       "localizations": {
         "es": {
@@ -217,6 +347,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Token"
+          }
+        }
+      }
+    },
+    "Turn Off Shuffle": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivar aleatorio"
+          }
+        }
+      }
+    },
+    "Turn On Shuffle": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activar aleatorio"
+          }
+        }
+      }
+    },
+    "Up Next": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A continuación"
+          }
+        }
+      }
+    },
+    "Volume": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volumen"
           }
         }
       }

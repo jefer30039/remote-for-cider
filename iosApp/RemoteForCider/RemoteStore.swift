@@ -132,4 +132,6 @@ final class RemoteStore {
     func setVolume(_ volume: Double) { remote?.setVolume(volume: volume) }
     func toggleShuffle() { remote?.toggleShuffle() }
     func cycleRepeat() { remote?.cycleRepeat() }
+    func toggleLove() { remote?.toggleLove() }
+    func toggleInLibrary() { remote?.toggleInLibrary() }
 }
