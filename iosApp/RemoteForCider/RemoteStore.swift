@@ -46,9 +46,21 @@ final class RemoteStore {
     private(set) var connection: Connection?
     private(set) var player: PlayerState?
     private(set) var link: LinkStatus = .connecting
+    /// Tras perder la conexión el silencio sigue un rato (si no, en segundo plano iOS suspendería la
+    /// app y no volvería a conectar); si Cider se cerró de verdad, se corta y no gasta batería.
+    @ObservationIgnored private var lockScreenGrace: Task<Void, Never>?
+    private static let lockScreenGraceSeconds: UInt64 = 60
 
     @ObservationIgnored private var session: CiderSession?
     @ObservationIgnored private var observer: Task<Void, Never>?
+    @ObservationIgnored private lazy var lockScreen = LockScreenPlayer(commands: .init(
+        togglePlay: { [weak self] in self?.togglePlay() },
+        play: { [weak self] in if self?.player?.isPlaying == false { self?.togglePlay() } },
+        pause: { [weak self] in self?.remote?.pause() },
+        next: { [weak self] in self?.next() },
+        previous: { [weak self] in self?.previous() },
+        seek: { [weak self] in self?.seek(to: $0) }
+    ))
 
     var api: CiderApi? { session?.api }
     var remote: CiderRemote? { session?.remote }
@@ -77,6 +89,9 @@ final class RemoteStore {
         session = nil
         player = nil
         link = .connecting
+        lockScreenGrace?.cancel()
+        lockScreenGrace = nil
+        lockScreen.setActive(false)
     }
 
     func forget() {
@@ -92,6 +107,20 @@ final class RemoteStore {
         case .online: link = .online
         case .offline(let offline): link = .offline(offline.reason)
         }
+        // Silencio y reproductor del sistema mientras hay conexión (también con Cider en pausa).
+        if link == .online {
+            lockScreenGrace?.cancel()
+            lockScreenGrace = nil
+            lockScreen.setActive(true)
+        } else if lockScreenGrace == nil {
+            lockScreenGrace = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: Self.lockScreenGraceSeconds * 1_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                self.lockScreenGrace = nil
+                if self.link != .online { self.lockScreen.setActive(false) }
+            }
+        }
+        lockScreen.update(state)
     }
 
     // MARK: - Comandos (optimistas en shared; el socket corrige)

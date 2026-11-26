@@ -20,7 +20,8 @@ targets:
   RemoteForCider:
     type: application
     platform: iOS
-    scheme: {}
+    scheme:
+      testTargets: [RemoteForCiderUITests]
     sources:
       - path: RemoteForCider
     dependencies:
@@ -59,3 +60,14 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         # El framework estático de Kotlin/Native usa libc++.
         OTHER_LDFLAGS: ["-lc++"]
+  RemoteForCiderUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: RemoteForCider
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.jefer30039.remoteforcider.uitests
+        GENERATE_INFOPLIST_FILE: YES

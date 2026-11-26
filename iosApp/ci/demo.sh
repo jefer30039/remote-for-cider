@@ -1,10 +1,12 @@
 #!/bin/bash
 # Capturas y vídeos de la app en el simulador contra el Cider de demostración (fake_cider.py).
-#   DEMO_FIXTURES_KEY=… iosApp/ci/demo.sh <RemoteForCider.app> <carpeta de salida>
+#   DEMO_FIXTURES_KEY=… iosApp/ci/demo.sh <RemoteForCider.app> <carpeta de salida> [<.xctestrun>]
+# Con el .xctestrun (xcodebuild build-for-testing) graba además los recorridos de UITests/DemoFlows.swift.
 # En el simulador, 127.0.0.1 es el propio Mac: ahí escucha el Cider de mentira.
 set -euo pipefail
 APP=$1
 OUT=$2
+XCTESTRUN=${3:-}
 HERE=$(cd "$(dirname "$0")" && pwd)
 DEMO=$HERE/../Demo
 WORK=$(mktemp -d)
@@ -87,6 +89,26 @@ shot 06-biblioteca-albumes-oscuro-es 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoT
 xcrun simctl ui "$UDID" appearance light
 video 10-arranque-hasta-reproduccion 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES
 video 11-arranque-biblioteca 8 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab library
+
+# recorrido <nombre> <prueba de DemoFlows>: graba la pantalla mientras XCUITest mueve la app.
+flow() {
+  local name=$1 test=$2
+  xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
+  xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$OUT/$name.mp4" 2>/dev/null &
+  local rec=$!
+  sleep 1.5
+  xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
+    -only-testing:"RemoteForCiderUITests/DemoFlows/$test" > "$OUT/$name.xcodebuild.log" 2>&1 \
+    || echo "El recorrido $test falló (ver $name.xcodebuild.log)"
+  kill -INT $rec
+  wait $rec || true
+  echo "vídeo: $name.mp4"
+}
+
+if [ -n "$XCTESTRUN" ]; then
+  flow 20-recorrido-desplazar-minimiza-barra testScrollMinimizesTabBar
+  flow 21-recorrido-abrir-y-cerrar-hoja testOpenAndClosePlayer
+fi
 
 # Registro de la app (println de shared incluido) para depurar lo que no se ve.
 xcrun simctl spawn "$UDID" log show --last 3m --style compact \

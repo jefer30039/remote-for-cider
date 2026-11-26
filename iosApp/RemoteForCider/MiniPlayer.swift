@@ -46,6 +46,8 @@ struct MiniPlayer: View {
         .padding(.trailing, 6)
         .contentShape(Rectangle())
         .onTapGesture { if track != nil { open() } }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("miniPlayer")
     }
 
     private var status: String {

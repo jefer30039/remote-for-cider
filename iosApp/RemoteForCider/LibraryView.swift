@@ -44,7 +44,8 @@ struct LibraryView: View {
     private func load() async {
         guard let api = store.api else { return }
         do {
-            albums = try await api.albums(offset: 0, limit: 100).items
+            // Page<T> llega a Swift como genérico de Objective-C: los elementos vienen como `Any`.
+            albums = try await api.albums(offset: 0, limit: 100).items.compactMap { $0 as? LibraryAlbum }
             failure = nil
         } catch {
             failure = error.localizedDescription

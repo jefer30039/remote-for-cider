@@ -50,7 +50,26 @@ jobs:
         run: ./gradlew :shared:jvmTest --console=plain --no-configuration-cache
 
       - name: Shared.xcframework
-        run: ./gradlew :shared:assembleSharedReleaseXCFramework --console=plain --no-configuration-cache
+        run: |
+          set -o pipefail
+          mkdir -p build
+          ./gradlew :shared:assembleSharedReleaseXCFramework --console=plain --no-configuration-cache 2>&1 | tee build/gradle-xcframework.log
+
+      # Qué ve Swift del framework: cabecera de Objective-C, interfaz de Swift y código que genera SKIE.
+      - name: Inspect Shared.xcframework
+        if: always()
+        run: |
+          F=shared/build/XCFrameworks/release/Shared.xcframework
+          mkdir -p build/shared-api
+          find "$F" -maxdepth 4 | head -40
+          FW="$F/ios-arm64/Shared.framework"
+          cp -R "$FW/Headers" build/shared-api/ || true
+          cp -R "$FW/Modules" build/shared-api/ || true
+          find shared/build -path "*skie*" -name "*.swift" -path "*iosArm64*" | head -400 | xargs -I{} cp {} build/shared-api/ 2>/dev/null || true
+          echo "--- Objective-C (albums / request):"
+          grep -n "albums\|requestHost\|request(host" "$FW/Headers/Shared.h" | head -20 || true
+          echo "--- Swift (albums / request):"
+          grep -rn "func albums\|func request" build/shared-api | head -20 || true
 
       - name: Xcode project (XcodeGen)
         run: |
@@ -59,22 +78,28 @@ jobs:
 
       - name: Build for the simulator
         run: |
-          set -o pipefail
           mkdir -p build
+          status=0
           xcodebuild -project iosApp/RemoteForCider.xcodeproj -scheme RemoteForCider \
             -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/dd-sim build | tee build/xcodebuild-sim.log | grep -E "error|warning: .*\.swift|BUILD" || true
-          test -d build/dd-sim/Build/Products/Debug-iphonesimulator/RemoteForCider.app
+            -derivedDataPath build/dd-sim build-for-testing > build/xcodebuild-sim.log 2>&1 || status=$?
+          grep -E "error:|warning: .*\.swift|\*\* .* \*\*" build/xcodebuild-sim.log | sort -u || true
+          test $status -eq 0
+          test -f build/dd-sim/Build/Products/Debug-iphonesimulator/RemoteForCider.app/RemoteForCider
 
       - name: Build unsigned .ipa
         run: |
-          set -o pipefail
+          status=0
           xcodebuild -project iosApp/RemoteForCider.xcodeproj -scheme RemoteForCider \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build/dd-ios CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build | tee build/xcodebuild-ios.log | grep -E "error|BUILD" || true
+            build > build/xcodebuild-ios.log 2>&1 || status=$?
+          grep -E "error:|\*\* .* \*\*" build/xcodebuild-ios.log | sort -u || true
+          test $status -eq 0
+          APP=build/dd-ios/Build/Products/Release-iphoneos/RemoteForCider.app
+          test -f "$APP/RemoteForCider"
           mkdir -p build/ipa/Payload
-          cp -R build/dd-ios/Build/Products/Release-iphoneos/RemoteForCider.app build/ipa/Payload/
+          cp -R "$APP" build/ipa/Payload/
           (cd build/ipa && zip -qry ../remote-for-cider-ios-unsigned.ipa Payload)
           ls -la build/remote-for-cider-ios-unsigned.ipa
 
@@ -86,7 +111,8 @@ jobs:
             echo "No DEMO_FIXTURES_KEY secret: skipping the demo screenshots."
             exit 0
           fi
-          iosApp/ci/demo.sh build/dd-sim/Build/Products/Debug-iphonesimulator/RemoteForCider.app build/demo
+          iosApp/ci/demo.sh build/dd-sim/Build/Products/Debug-iphonesimulator/RemoteForCider.app build/demo \
+            "$(ls build/dd-sim/Build/Products/*.xctestrun | head -1)"
 
       - name: Upload .ipa
         uses: actions/upload-artifact@v4
@@ -112,6 +138,8 @@ jobs:
           name: build-logs
           path: |
             build/xcodebuild-*.log
+            build/gradle-xcframework.log
+            build/shared-api
             shared/build/reports
           retention-days: 7
           if-no-files-found: ignore

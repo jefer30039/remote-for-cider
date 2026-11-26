@@ -97,6 +97,7 @@ struct NowPlayingView: View {
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 60, height: 60)
             }
+            .accessibilityIdentifier("playPause")
             Spacer()
             Button { store.next() } label: {
                 Image(systemName: "forward.fill").font(.system(size: 34))
