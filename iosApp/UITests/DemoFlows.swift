@@ -131,13 +131,35 @@ final class DemoFlows: XCTestCase {
             }
             return false
         }
-        let display = open(["Display & Brightness", "Pantalla y brillo"], in: settings)
+        // iOS 27: "Appearance" (antes "Display & Brightness"); dentro, Liquid Glass o directamente las opciones.
+        let display = open(["Appearance", "Apariencia", "Display & Brightness", "Pantalla y brillo"], in: settings)
         save("61-ajustes-pantalla")
-        let glass = display && open(["Liquid Glass"], in: settings)
-        save("62-ajustes-liquid-glass")
-        let tinted = glass && open(["Tinted", "Teñido"], in: settings)
-        save("63-ajustes-tenido")
         write("64-ajustes-arbol.txt", settings.debugDescription)
+        var tinted = display && open(["Tinted", "Teñido"], in: settings)
+        var glass = tinted
+        if display && !tinted {
+            glass = open(["Liquid Glass"], in: settings)
+            save("62-ajustes-liquid-glass")
+            write("64-ajustes-arbol-liquid-glass.txt", settings.debugDescription)
+            tinted = glass && open(["Tinted", "Teñido"], in: settings)
+        }
+        if !tinted {
+            // Último recurso: el buscador de Ajustes.
+            settings.terminate()
+            settings.launch()
+            sleep(2)
+            let field = settings.searchFields.firstMatch
+            if field.waitForExistence(timeout: 3) {
+                field.tap()
+                field.typeText("Liquid Glass")
+                sleep(2)
+                save("62-ajustes-buscar")
+                write("64-ajustes-arbol-buscar.txt", settings.debugDescription)
+                let hit = settings.cells.staticTexts["Liquid Glass"].firstMatch
+                if hit.exists { hit.tap(); sleep(2); glass = true; tinted = open(["Tinted", "Teñido"], in: settings) }
+            }
+        }
+        save("63-ajustes-tenido")
         guard tinted else {
             XCTFail("No se encontró el ajuste de Liquid Glass (pantalla: \(display), liquid glass: \(glass))")
             return
