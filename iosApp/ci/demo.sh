@@ -17,7 +17,11 @@ echo "::group::Cider de demostración"
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in "$DEMO/fixtures.tar.gz.enc" -pass env:DEMO_FIXTURES_KEY \
   | tar -xz -C "$WORK"
 python3 -m venv "$WORK/venv"
-"$WORK/venv/bin/pip" install -q aiohttp
+# Con reintentos: un corte de red del runner (DNS) tumbaba la ejecución entera.
+for i in 1 2 3 4 5; do
+  "$WORK/venv/bin/pip" install -q aiohttp && break
+  echo "pip falló (intento $i), reintento en 15 s"; sleep 15
+done
 "$WORK/venv/bin/python" -I "$DEMO/fake_cider.py" --fixtures "$WORK/fixtures" > "$OUT/fake-cider.log" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true' EXIT
