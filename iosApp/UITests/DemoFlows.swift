@@ -3,6 +3,33 @@ import XCTest
 /// Recorridos para los vídeos del simulador en CI (iosApp/ci/demo.sh graba la pantalla mientras corren).
 /// No comprueban casi nada: mueven la app como lo haría una persona, con pausas para ver las animaciones.
 final class DemoFlows: XCTestCase {
+    // MARK: - Grabación (iosApp/ci/demo.sh graba un vídeo por prueba)
+
+    private var flowDir: URL? {
+        ProcessInfo.processInfo.environment["DEMO_OUT"].map { URL(fileURLWithPath: $0).appendingPathComponent(".flow") }
+    }
+    private var recording = false
+
+    /// Pide a demo.sh que reinicie el Cider de demostración y empiece a grabar `<nombre>.mp4`; espera a
+    /// que la grabación haya empezado. Sin DEMO_OUT (fuera del CI) no hace nada.
+    private func record(_ name: String) {
+        guard let dir = flowDir, FileManager.default.fileExists(atPath: dir.path) else { return }
+        try? name.write(to: dir.appendingPathComponent("start"), atomically: true, encoding: .utf8)
+        let started = dir.appendingPathComponent("recording")
+        for _ in 0..<50 where !FileManager.default.fileExists(atPath: started.path) { usleep(200_000) }
+        recording = true
+    }
+
+    override func tearDown() {
+        if recording, let dir = flowDir {
+            try? "".write(to: dir.appendingPathComponent("stop"), atomically: true, encoding: .utf8)
+            let started = dir.appendingPathComponent("recording")
+            for _ in 0..<50 where FileManager.default.fileExists(atPath: started.path) { usleep(200_000) }
+            recording = false
+        }
+        super.tearDown()
+    }
+
     private func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-ciderHost", "127.0.0.1", "-ciderPort", "10767", "-ciderToken", "demo",
@@ -13,6 +40,7 @@ final class DemoFlows: XCTestCase {
 
     /// Biblioteca: desplazar hacia abajo (la barra se minimiza con el miniplayer dentro) y volver arriba.
     func testScrollMinimizesTabBar() {
+        record("20-recorrido-desplazar-minimiza-barra")
         let app = launch(["-demoTab", "library"])
         sleep(4)
         let scroll = app.scrollViews.firstMatch
@@ -26,6 +54,7 @@ final class DemoFlows: XCTestCase {
 
     /// Abrir la hoja de reproducción tocando el miniplayer, pausar, reanudar y cerrarla deslizando.
     func testOpenAndClosePlayer() {
+        record("21-recorrido-abrir-y-cerrar-hoja")
         let app = launch(["-demoTab", "library", "-demoLogFrames", "YES"])
         let mini = app.otherElements["miniPlayer"]
         XCTAssertTrue(mini.waitForExistence(timeout: 10))
@@ -52,6 +81,7 @@ final class DemoFlows: XCTestCase {
     /// Letra: abrir la hoja, pasar a la letra y dejarla correr (barrido por sílaba, cambio de línea),
     /// arrastrarla, esperar a que vuelva sola, tocar una línea y volver a la carátula.
     func testLyrics() {
+        record("23-recorrido-letra")
         let app = launch(["-demoTab", "library"])
         let mini = app.otherElements["miniPlayer"]
         XCTAssertTrue(mini.waitForExistence(timeout: 10))
@@ -79,6 +109,7 @@ final class DemoFlows: XCTestCase {
     /// los Ajustes del simulador y se repiten las capturas de la barra, el miniplayer y la hoja para
     /// compararlas con las de siempre (transparente). Va el último: deja el ajuste cambiado.
     func testTintedGlass() {
+        record("24-recorrido-vidrio-tenido")
         let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
         settings.launch()
         sleep(2)
@@ -129,6 +160,7 @@ final class DemoFlows: XCTestCase {
     /// para ver el reproductor del sistema con la canción de Cider. Guarda capturas en `DEMO_OUT`
     /// (`TEST_RUNNER_DEMO_OUT` en xcodebuild) además de adjuntarlas a la prueba.
     func testLockScreen() {
+        record("22-recorrido-pantalla-bloqueo")
         let app = launch(["-demoTab", "library"])
         XCTAssertTrue(app.otherElements["miniPlayer"].waitForExistence(timeout: 10))
         sleep(6)
@@ -167,6 +199,9 @@ final class DemoFlows: XCTestCase {
             sleep(3)
             save("43-pantalla-bloqueo-tras-pausa")
         }
+        // Desbloquear (sin código): las pruebas siguientes van en la misma tanda.
+        device.press(.home)
+        sleep(2)
     }
 
     private func write(_ name: String, _ text: String) {

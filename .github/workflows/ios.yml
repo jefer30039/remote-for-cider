@@ -50,6 +50,16 @@ jobs:
           xcodebuild -version
           xcrun simctl list runtimes | grep iOS
 
+      # El simulador tarda ~7 min en arrancar: se arranca ya, en segundo plano, mientras se compila.
+      # demo.sh espera con `bootstatus` a que termine (SIM_UDID).
+      - name: Boot the simulator (background)
+        run: |
+          mkdir -p build
+          UDID=$(iosApp/ci/sim.sh)
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          nohup sh -c "xcrun simctl boot $UDID; xcrun simctl bootstatus $UDID -b" > build/sim-boot.log 2>&1 &
+          echo "Arrancando $SIM_DEVICE: $UDID"
+
       - name: Shared tests (JVM)
         run: ./gradlew :shared:jvmTest --console=plain --no-configuration-cache -Pkotlin.apple.xcodeCompatibility.nowarn=true
 

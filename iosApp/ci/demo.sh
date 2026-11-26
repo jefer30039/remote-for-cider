@@ -26,33 +26,11 @@ curl -sf http://127.0.0.1:10767/api/v2/client/info
 echo "::endgroup::"
 
 echo "::group::Simulador"
-# Simulador del runner (cambia con la imagen): SIM_DEVICE y SIM_RUNTIME (prefijo, p. ej. "iOS-27").
+# Simulador del runner: el flujo de CI ya lo arrancó al principio (SIM_UDID, en paralelo con la
+# compilación); si no, se elige aquí. `bootstatus -b` espera a que acabe de arrancar.
 SIM_DEVICE=${SIM_DEVICE:-iPhone 18 Pro Max}
 SIM_RUNTIME=${SIM_RUNTIME:-iOS-27}
-UDID=$(xcrun simctl list devices available -j | SIM_DEVICE="$SIM_DEVICE" SIM_RUNTIME="$SIM_RUNTIME" python3 -c '
-import json, os, re, sys
-best = None
-for runtime, devices in json.load(sys.stdin)["devices"].items():
-    if os.environ["SIM_RUNTIME"] not in runtime:
-        continue
-    # "…SimRuntime.iOS-27-2" (y en Xcode 27 también "…iOS-27-1-iPhone19…" para modelos concretos).
-    m = re.search(r"iOS-(\d+)-(\d+)", runtime)
-    if not m:
-        continue
-    version = (int(m.group(1)), int(m.group(2)))
-    for d in devices:
-        if d["name"] == os.environ["SIM_DEVICE"] and (best is None or version > best[0]):
-            best = (version, d["udid"])
-print(best[1] if best else "")')
-if [ -z "$UDID" ]; then
-  # La imagen no trae ese modelo creado: se crea con el runtime más nuevo que encaje.
-  RUNTIME_ID=$(xcrun simctl list runtimes available -j | SIM_RUNTIME="$SIM_RUNTIME" python3 -c '
-import json, os, sys
-ids = [r["identifier"] for r in json.load(sys.stdin)["runtimes"] if os.environ["SIM_RUNTIME"] in r["identifier"]]
-print(sorted(ids)[-1] if ids else "")')
-  echo "Creando $SIM_DEVICE con $RUNTIME_ID"
-  UDID=$(xcrun simctl create "$SIM_DEVICE" "$SIM_DEVICE" "$RUNTIME_ID")
-fi
+UDID=${SIM_UDID:-$("$HERE/sim.sh")}
 echo "$SIM_DEVICE ($SIM_RUNTIME): $UDID"
 xcrun simctl boot "$UDID" || true
 xcrun simctl bootstatus "$UDID" -b
@@ -112,33 +90,48 @@ xcrun simctl ui "$UDID" appearance light
 video 10-arranque-hasta-reproduccion 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES
 video 11-arranque-biblioteca 8 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab library
 
-# recorrido <nombre> <prueba de DemoFlows>: graba la pantalla mientras XCUITest mueve la app.
-flow() {
-  local name=$1 test=$2
-  xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
-  reset_demo
-  xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$OUT/$name.mp4" 2>/dev/null &
-  local rec=$!
-  sleep 1.5
-  TEST_RUNNER_DEMO_OUT="$(cd "$OUT" && pwd)" xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
-    -only-testing:"RemoteForCiderUITests/DemoFlows/$test" > "$OUT/$name.xcodebuild.log" 2>&1 \
-    || echo "El recorrido $test falló (ver $name.xcodebuild.log)"
-  kill -INT $rec
-  wait $rec || true
-  echo "vídeo: $name.mp4"
-}
-
+# Recorridos de DemoFlows, todos en una sola tanda de xcodebuild (cada lanzamiento gastaba ~2 min en
+# preparar las pruebas). Cada prueba pide su vídeo con archivos en $OUT/.flow (ver DemoFlows.record):
+# `start` con el nombre → se reinicia el Cider de demostración, se empieza a grabar y se crea
+# `recording`; `stop` → se para la grabación y se borra `recording`. Van en orden alfabético:
+# testTintedGlass, que deja Liquid Glass teñido, es la última.
 if [ -n "$XCTESTRUN" ]; then
-  flow 20-recorrido-desplazar-minimiza-barra testScrollMinimizesTabBar
-  flow 21-recorrido-abrir-y-cerrar-hoja testOpenAndClosePlayer
-  flow 23-recorrido-letra testLyrics
-  flow 22-recorrido-pantalla-bloqueo testLockScreen
-  # El último: deja Liquid Glass en teñido.
-  flow 24-recorrido-vidrio-tenido testTintedGlass
+  FLOW="$OUT/.flow"
+  rm -rf "$FLOW"; mkdir -p "$FLOW"
+  (
+    rec=""
+    while [ ! -f "$FLOW/done" ]; do
+      if [ -f "$FLOW/start" ]; then
+        name=$(cat "$FLOW/start"); rm -f "$FLOW/start"
+        reset_demo
+        xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$OUT/$name.mp4" 2>/dev/null &
+        rec=$!
+        sleep 1.5
+        touch "$FLOW/recording"
+        echo "vídeo: $name.mp4"
+      fi
+      if [ -f "$FLOW/stop" ]; then
+        rm -f "$FLOW/stop"
+        if [ -n "$rec" ]; then kill -INT "$rec" 2>/dev/null || true; wait "$rec" 2>/dev/null || true; rec=""; fi
+        rm -f "$FLOW/recording"
+      fi
+      sleep 0.2
+    done
+    if [ -n "$rec" ]; then kill -INT "$rec" 2>/dev/null || true; wait "$rec" 2>/dev/null || true; fi
+  ) &
+  RECORDER=$!
+  xcrun simctl terminate "$UDID" "$BID" 2>/dev/null || true
+  TEST_RUNNER_DEMO_OUT="$(cd "$OUT" && pwd)" xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
+    -only-testing:RemoteForCiderUITests/DemoFlows > "$OUT/recorridos.xcodebuild.log" 2>&1 \
+    || echo "Algún recorrido falló (ver recorridos.xcodebuild.log)"
+  grep -E "Test Case .*(passed|failed)" "$OUT/recorridos.xcodebuild.log" || true
+  touch "$FLOW/done"
+  wait $RECORDER || true
+  rm -rf "$FLOW"
 fi
 
 # Registro de la app (println de shared incluido) para depurar lo que no se ve.
-xcrun simctl spawn "$UDID" log show --last 3m --style compact \
+xcrun simctl spawn "$UDID" log show --last 20m --style compact \
   --predicate "process == \"RemoteForCider\"" > "$OUT/app.log" 2>&1 || true
 grep FALTA "$OUT/fake-cider.log" | sort -u > "$OUT/rutas-sin-grabar.txt" || true
 echo "Rutas sin grabar: $(wc -l < "$OUT/rutas-sin-grabar.txt")"
