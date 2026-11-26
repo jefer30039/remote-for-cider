@@ -21,6 +21,8 @@ struct NowPlayingView: View {
         let player = store.player
         let track = player?.track
         let playing = player?.isPlaying ?? false
+        // Portada animada, en cuanto está su fotograma fijo (antes, la tarjeta de siempre).
+        let hero = store.covers.current.flatMap { $0.image == nil ? nil : $0 }
         // El lector respeta el área segura (así da sus márgenes) y el contenido la cubre entera: se
         // coloca en coordenadas de pantalla, las mismas de la miniatura del miniplayer.
         GeometryReader { geo in
@@ -44,10 +46,33 @@ struct NowPlayingView: View {
 
                 // Esquinas de la pantalla mientras sube o baja con el dedo; abierta, sin esquinas.
                 let corner = max(M.screenCorner * (1 - min(max(sheet.progress, 0), 1)), min(sheet.drag * 0.8, M.screenCorner))
-                ColorField(artwork: track?.artwork)
-                    .frame(width: w, height: h)
-                    .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-                    .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance, from: 0, to: 0.5))
+                if hero == nil {
+                    ColorField(artwork: track?.artwork)
+                        .frame(width: w, height: h)
+                        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                        .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance, from: 0, to: 0.5))
+                        .transition(.opacity)
+                }
+                if let hero {
+                    // Con portada animada, el vídeo es la carátula: vuela entero desde la miniatura.
+                    let squareTop = CGFloat(hero.squareTop ?? 1.0 / 6) * w
+                    ZStack(alignment: .topLeading) {
+                        HeroArtwork(hero: hero, size: CGSize(width: w, height: h))
+                        ZStack {
+                            CoverImage(artwork: track?.artwork, pixels: 120, corner: 0)
+                            CoverImage(artwork: track?.artwork, pixels: 1200, corner: 0, placeholder: false)
+                        }
+                        .frame(width: w, height: w)
+                        .offset(y: squareTop)
+                        .modifier(HeroCoverFade(progress: sheet.progress))
+                    }
+                    .modifier(HeroFlight(
+                        progress: sheet.progress, drag: sheet.drag, from: sheet.miniArt,
+                        size: CGSize(width: w, height: h), squareTop: squareTop, fromCorner: MiniPlayer.artCorner
+                    ))
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                }
 
                 ZStack(alignment: .topLeading) {
                     Capsule()
@@ -87,7 +112,7 @@ struct NowPlayingView: View {
 
                 // La carátula vuela desde la miniatura del miniplayer; en pausa se encoge a 0,78 con
                 // un muelle (iOS). Debajo, la de 120 px del miniplayer mientras carga la grande.
-                ZStack {
+                if hero == nil { ZStack {
                     CoverImage(artwork: track?.artwork, pixels: 120, corner: 0)
                     CoverImage(artwork: track?.artwork, pixels: 1200, corner: 0, placeholder: false)
                 }
@@ -97,7 +122,9 @@ struct NowPlayingView: View {
                 ))
                 .animation(.spring(response: 0.5, dampingFraction: 0.72), value: playing)
                 .allowsHitTesting(false)
+                .transition(.opacity) }
             }
+            .animation(.easeInOut(duration: 0.4), value: hero?.video)
             .frame(width: w, height: h)
             .contentShape(Rectangle())
             // Deslizar hacia abajo cierra: la hoja entera baja con el dedo y, al soltar, decide por la

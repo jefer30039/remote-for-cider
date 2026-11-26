@@ -46,6 +46,8 @@ final class RemoteStore {
     private(set) var connection: Connection?
     private(set) var player: PlayerState?
     private(set) var link: LinkStatus = .connecting
+    /// Portada animada de la canción actual (se consulta al cambiar de canción).
+    let covers = AnimatedCovers()
     /// Tras perder la conexión el silencio sigue un rato (si no, en segundo plano iOS suspendería la
     /// app y no volvería a conectar); si Cider se cerró de verdad, se corta y no gasta batería.
     @ObservationIgnored private var lockScreenGrace: Task<Void, Never>?
@@ -121,6 +123,7 @@ final class RemoteStore {
             }
         }
         lockScreen.update(state)
+        covers.track(state.track?.catalogId, artwork: state.track?.artwork, api: api)
     }
 
     // MARK: - Comandos (optimistas en shared; el socket corrige)
