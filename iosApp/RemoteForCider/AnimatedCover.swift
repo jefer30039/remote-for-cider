@@ -12,6 +12,9 @@ final class AnimatedCovers {
     struct Hero: Equatable {
         let video: URL
         let preview: URL?
+        /// Vídeo cuadrado (1:1) y su fotograma fijo, para la pantalla de bloqueo.
+        var squareVideo: URL?
+        var squarePreview: URL?
         /// Fotograma fijo descargado (mientras no está, la hoja usa la tarjeta de siempre).
         var image: UIImage?
         /// Altura (fracción del ancho, desde arriba) del cuadrado del vídeo que coincide con la carátula fija.
@@ -21,7 +24,11 @@ final class AnimatedCovers {
     }
 
     /// Lo que hay para la canción actual (`nil`: no tiene o aún no se sabe).
-    private(set) var current: Hero?
+    private(set) var current: Hero? {
+        didSet { if current != oldValue { onChange?(current) } }
+    }
+    /// Avisa al reproductor del sistema (pantalla de bloqueo) cuando cambia la portada animada.
+    @ObservationIgnored var onChange: ((Hero?) -> Void)?
     private var currentId: String?
     @ObservationIgnored private var known: [String: Hero?] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -45,6 +52,8 @@ final class AnimatedCovers {
                 return
             }
             var hero = Hero(video: video, preview: cover?.tallPreview?.sized(w: Self.previewPx, h: Self.previewPx * 4 / 3).flatMap { URL(string: $0) })
+            hero.squareVideo = cover?.square.flatMap { URL(string: $0) }
+            hero.squarePreview = cover?.squarePreview?.sized(px: 1000).flatMap { URL(string: $0) }
             if let url = hero.preview, let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) {
                 hero.image = image
                 var artData: Data?

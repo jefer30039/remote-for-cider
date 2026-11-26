@@ -68,6 +68,7 @@ final class RemoteStore {
     var remote: CiderRemote? { session?.remote }
 
     init() {
+        covers.onChange = { [weak self] hero in self?.lockScreen.setAnimated(hero) }
         if let saved = Connection.saved() { connect(saved) }
     }
 
@@ -122,8 +123,10 @@ final class RemoteStore {
                 if self.link != .online { self.lockScreen.setActive(false) }
             }
         }
-        lockScreen.update(state)
+        // Primero la portada animada: al cambiar de canción se quita la de la anterior antes de
+        // publicar la nueva en la pantalla de bloqueo.
         covers.track(state.track?.catalogId, artwork: state.track?.artwork, api: api)
+        lockScreen.update(state)
     }
 
     // MARK: - Comandos (optimistas en shared; el socket corrige)

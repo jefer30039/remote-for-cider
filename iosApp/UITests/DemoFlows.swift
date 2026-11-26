@@ -69,6 +69,9 @@ final class DemoFlows: XCTestCase {
         save("40-pantalla-bloqueo")
         sleep(6)
         save("41-pantalla-bloqueo-despues")
+        // La portada animada: iOS pide el vídeo al enseñar la carátula grande y la app lo baja (~5 MB).
+        sleep(10)
+        save("44-pantalla-bloqueo-animada")
         // ¿Están los botones del reproductor aunque no se vean? Árbol de accesibilidad de SpringBoard.
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         write("42-pantalla-bloqueo-accesibilidad.txt", springboard.debugDescription)

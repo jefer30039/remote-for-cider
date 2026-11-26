@@ -1,7 +1,10 @@
 import AVFoundation
 import MediaPlayer
+import OSLog
 import Shared
 import UIKit
+
+let lockLog = Logger(subsystem: "io.github.jefer30039.remoteforcider", category: "bloqueo")
 
 /// Reproductor del sistema (pantalla de bloqueo, Centro de Control, Dynamic Island).
 ///
@@ -97,6 +100,7 @@ final class LockScreenPlayer {
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
         if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
+        info.merge(animated) { _, new in new }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = playing ? .playing : .paused
     }
@@ -149,6 +153,43 @@ final class LockScreenPlayer {
         d.append(contentsOf: Array("data".utf8)); put32(dataSize)
         d.append(Data(count: Int(dataSize)))
         return d
+    }
+
+    // MARK: - Portada animada (iOS 26+: `MPMediaItemAnimatedArtwork`)
+
+    /// Claves de portada animada que van en el "Now Playing" de la canción actual.
+    private var animated: [String: Any] = [:]
+
+    /// La portada animada de la canción actual, o `nil`. iOS pide el vídeo como **archivo local**
+    /// (no admite HLS ni URLs remotas) solo cuando lo va a enseñar; entonces se baja (ver
+    /// `AnimatedArtworkFiles`). El fotograma fijo coincide con el primer fotograma del vídeo.
+    func setAnimated(_ hero: AnimatedCovers.Hero?) {
+        let supported = Set(MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys)
+        lockLog.notice("portada animada: \(hero?.video.lastPathComponent ?? "ninguna", privacy: .public); claves admitidas \(supported.sorted().joined(separator: ","), privacy: .public)")
+        var keys: [String: Any] = [:]
+        if let hero {
+            if supported.contains(MPNowPlayingInfoProperty3x4AnimatedArtwork), let image = hero.image {
+                let video = hero.video
+                keys[MPNowPlayingInfoProperty3x4AnimatedArtwork] = MPMediaItemAnimatedArtwork(
+                    artworkID: video.absoluteString,
+                    previewImageRequestHandler: { _ in image },
+                    videoAssetFileURLRequestHandler: { _ in await AnimatedArtworkFiles.localFile(hls: video) }
+                )
+            }
+            if supported.contains(MPNowPlayingInfoProperty1x1AnimatedArtwork), let video = hero.squareVideo, let preview = hero.squarePreview {
+                keys[MPNowPlayingInfoProperty1x1AnimatedArtwork] = MPMediaItemAnimatedArtwork(
+                    artworkID: video.absoluteString,
+                    previewImageRequestHandler: { _ in await AnimatedArtworkFiles.image(preview) },
+                    videoAssetFileURLRequestHandler: { _ in await AnimatedArtworkFiles.localFile(hls: video) }
+                )
+            }
+        }
+        animated = keys
+        guard active, var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else { return }
+        info[MPNowPlayingInfoProperty3x4AnimatedArtwork] = nil
+        info[MPNowPlayingInfoProperty1x1AnimatedArtwork] = nil
+        info.merge(keys) { _, new in new }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     // MARK: - Carátula
