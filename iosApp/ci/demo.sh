@@ -26,18 +26,21 @@ curl -sf http://127.0.0.1:10767/api/v2/client/info
 echo "::endgroup::"
 
 echo "::group::Simulador"
-UDID=$(xcrun simctl list devices available -j | python3 -c '
-import json, sys
+# Simulador del runner (cambia con la imagen): SIM_DEVICE y SIM_RUNTIME (prefijo, p. ej. "iOS-27").
+SIM_DEVICE=${SIM_DEVICE:-iPhone 18 Pro}
+SIM_RUNTIME=${SIM_RUNTIME:-iOS-27}
+UDID=$(xcrun simctl list devices available -j | SIM_DEVICE="$SIM_DEVICE" SIM_RUNTIME="$SIM_RUNTIME" python3 -c '
+import json, os, sys
 best = None
 for runtime, devices in json.load(sys.stdin)["devices"].items():
-    if "iOS-26" not in runtime:
+    if os.environ["SIM_RUNTIME"] not in runtime:
         continue
     version = tuple(int(x) for x in runtime.split("iOS-")[1].split("-"))
     for d in devices:
-        if d["name"] == "iPhone 17 Pro" and (best is None or version > best[0]):
+        if d["name"] == os.environ["SIM_DEVICE"] and (best is None or version > best[0]):
             best = (version, d["udid"])
 print(best[1])')
-echo "iPhone 17 Pro: $UDID"
+echo "$SIM_DEVICE ($SIM_RUNTIME): $UDID"
 xcrun simctl boot "$UDID" || true
 xcrun simctl bootstatus "$UDID" -b
 xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \

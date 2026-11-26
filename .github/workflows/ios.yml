@@ -17,10 +17,14 @@ concurrency:
 
 jobs:
   ios:
-    runs-on: macos-26
+    # Imagen de Xcode 27 (macOS 27, SDK de iOS 27). Es el runner estándar, gratis en repositorios
+    # públicos; NO usar xcode-27-xlarge (runner grande, se cobra aunque el repositorio sea público).
+    runs-on: xcode-27
     timeout-minutes: 90
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      SIM_DEVICE: iPhone 18 Pro
+      SIM_RUNTIME: iOS-27
     steps:
       - uses: actions/checkout@v4
 
@@ -47,13 +51,13 @@ jobs:
           xcrun simctl list runtimes | grep iOS
 
       - name: Shared tests (JVM)
-        run: ./gradlew :shared:jvmTest --console=plain --no-configuration-cache
+        run: ./gradlew :shared:jvmTest --console=plain --no-configuration-cache -Pkotlin.apple.xcodeCompatibility.nowarn=true
 
       - name: Shared.xcframework
         run: |
           set -o pipefail
           mkdir -p build
-          ./gradlew :shared:assembleSharedReleaseXCFramework --console=plain --no-configuration-cache 2>&1 | tee build/gradle-xcframework.log
+          ./gradlew :shared:assembleSharedReleaseXCFramework --console=plain --no-configuration-cache -Pkotlin.apple.xcodeCompatibility.nowarn=true 2>&1 | tee build/gradle-xcframework.log
 
       # Qué ve Swift del framework: cabecera de Objective-C, interfaz de Swift y código que genera SKIE.
       - name: Inspect Shared.xcframework
