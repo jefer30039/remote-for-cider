@@ -48,4 +48,37 @@ final class DemoFlows: XCTestCase {
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 500)), withVelocity: 600, thenHoldForDuration: 0.3)
         sleep(3)
     }
+
+    /// Pantalla de bloqueo: con la app conectada (suena el silencio), bloquear y despertar el simulador
+    /// para ver el reproductor del sistema con la canción de Cider. Guarda capturas en `DEMO_OUT`
+    /// (`TEST_RUNNER_DEMO_OUT` en xcodebuild) además de adjuntarlas a la prueba.
+    func testLockScreen() {
+        let app = launch(["-demoTab", "library"])
+        XCTAssertTrue(app.otherElements["miniPlayer"].waitForExistence(timeout: 10))
+        sleep(6)
+        let device = XCUIDevice.shared
+        let lock = NSSelectorFromString("pressLockButton")
+        guard device.responds(to: lock) else {
+            XCTFail("XCUIDevice no tiene pressLockButton en esta versión")
+            return
+        }
+        device.perform(lock)   // bloquear (pantalla apagada)
+        sleep(2)
+        device.perform(lock)   // despertar: pantalla de bloqueo
+        sleep(4)
+        save("40-pantalla-bloqueo")
+        sleep(6)
+        save("41-pantalla-bloqueo-despues")
+    }
+
+    private func save(_ name: String) {
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let dir = ProcessInfo.processInfo.environment["DEMO_OUT"] {
+            try? shot.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
+        }
+    }
 }

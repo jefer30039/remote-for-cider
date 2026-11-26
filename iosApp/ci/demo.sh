@@ -119,7 +119,7 @@ flow() {
   xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$OUT/$name.mp4" 2>/dev/null &
   local rec=$!
   sleep 1.5
-  xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
+  TEST_RUNNER_DEMO_OUT="$(cd "$OUT" && pwd)" xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
     -only-testing:"RemoteForCiderUITests/DemoFlows/$test" > "$OUT/$name.xcodebuild.log" 2>&1 \
     || echo "El recorrido $test falló (ver $name.xcodebuild.log)"
   kill -INT $rec
@@ -130,6 +130,7 @@ flow() {
 if [ -n "$XCTESTRUN" ]; then
   flow 20-recorrido-desplazar-minimiza-barra testScrollMinimizesTabBar
   flow 21-recorrido-abrir-y-cerrar-hoja testOpenAndClosePlayer
+  flow 22-recorrido-pantalla-bloqueo testLockScreen
 fi
 
 # Registro de la app (println de shared incluido) para depurar lo que no se ve.
