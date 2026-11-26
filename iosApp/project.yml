@@ -6,7 +6,7 @@ name: RemoteForCider
 options:
   bundleIdPrefix: io.github.jefer30039
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "27.0"
   createIntermediateGroups: true
   developmentLanguage: en
 settings:
