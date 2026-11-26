@@ -65,9 +65,13 @@ final class DemoFlows: XCTestCase {
         device.perform(lock)   // bloquear (pantalla apagada)
         sleep(2)
         device.perform(lock)   // despertar: pantalla de bloqueo
-        sleep(4)
+        // Una captura por segundo: ¿cuándo se oscurece? (si es la pantalla siempre activa, a los ~8–10 s)
+        for second in 1...12 {
+            sleep(1)
+            save(String(format: "39-bloqueo-%02ds", second))
+        }
         save("40-pantalla-bloqueo")
-        sleep(6)
+        sleep(2)
         save("41-pantalla-bloqueo-despues")
         // La portada animada: iOS pide el vídeo al enseñar la carátula grande y la app lo baja (~5 MB).
         sleep(10)
@@ -76,6 +80,11 @@ final class DemoFlows: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         write("42-pantalla-bloqueo-accesibilidad.txt", springboard.debugDescription)
         // Si hay botón de pausa, tocarlo: la orden debe llegar al Cider de demostración (fake-cider.log).
+        // Un toque en una zona vacía (encima del indicador de inicio): si estaba en la pantalla
+        // siempre activa, se despierta y la captura sale más clara.
+        springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).tap()
+        sleep(1)
+        save("45-bloqueo-tras-tocar")
         let pause = springboard.buttons.matching(NSPredicate(format: "label IN %@", ["Pause", "Pausa", "Pausar"])).firstMatch
         if pause.waitForExistence(timeout: 3) {
             pause.tap()
