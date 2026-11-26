@@ -56,8 +56,13 @@ enum ArtworkPalette {
             return true
         }
         guard drawn else { return nil }
-        let points: [SIMD3<Double>] = (0..<(side * side)).map { i in
-            SIMD3(Double(px[i * 4]) / 255, Double(px[i * 4 + 1]) / 255, Double(px[i * 4 + 2]) / 255)
+        var points: [SIMD3<Double>] = []
+        points.reserveCapacity(side * side)
+        for i in 0..<(side * side) {
+            let r = Double(px[i * 4]) / 255
+            let g = Double(px[i * 4 + 1]) / 255
+            let b = Double(px[i * 4 + 2]) / 255
+            points.append(SIMD3<Double>(r, g, b))
         }
         // k-medias (k = 4) con semillas repartidas por brillo.
         func luma(_ p: SIMD3<Double>) -> Double { p.x * 0.2126 + p.y * 0.7152 + p.z * 0.0722 }
@@ -113,23 +118,17 @@ struct ColorField: View {
             let t = now.timeIntervalSince(start)
             let mix = min(max(now.timeIntervalSince(switchedAt) / 1.2, 0), 1)
             GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
+                let w = Double(geo.size.width)
+                let h = Double(geo.size.height)
                 ZStack {
                     color(0, mix).color
                     ForEach(0..<4, id: \.self) { i in
-                        let th = t * (2 * .pi / Self.periods[i]) + Self.phases[i]
-                        let r = w * (0.95 + 0.15 * sin(th * 0.7))
-                        let c = color((i + 1) % 4, mix).color
-                        Circle()
-                            .fill(RadialGradient(colors: [c.opacity(0.9), c.opacity(0)], center: .center, startRadius: 0, endRadius: r))
-                            .frame(width: 2 * r, height: 2 * r)
-                            .position(x: w * (0.5 + 0.5 * cos(th)), y: h * (0.42 + 0.38 * sin(th * 1.3 + Self.phases[i])))
+                        Self.blob(i, t: t, w: w, h: h, color: color((i + 1) % 4, mix).color)
                     }
                     LinearGradient(stops: [.init(color: .clear, location: 0.5), .init(color: .black.opacity(0.12), location: 1)],
                                    startPoint: .top, endPoint: .bottom)
                 }
-                .frame(width: w, height: h)
+                .frame(width: CGFloat(w), height: CGFloat(h))
                 .clipped()
             }
             .drawingGroup()
@@ -140,6 +139,19 @@ struct ColorField: View {
             guard let url else { change(to: fallback); return }
             if let palette = await ArtworkPalette.load(url) { change(to: palette) } else { change(to: fallback) }
         }
+    }
+
+    /// Una mancha: degradado radial de su color a transparente que gira despacio por la pantalla.
+    private static func blob(_ i: Int, t: Double, w: Double, h: Double, color c: Color) -> some View {
+        let th: Double = t * (2 * Double.pi / periods[i]) + phases[i]
+        let r: Double = w * (0.95 + 0.15 * sin(th * 0.7))
+        let x: Double = w * (0.5 + 0.5 * cos(th))
+        let y: Double = h * (0.42 + 0.38 * sin(th * 1.3 + phases[i]))
+        let gradient = RadialGradient(colors: [c.opacity(0.9), c.opacity(0)], center: .center, startRadius: 0, endRadius: CGFloat(r))
+        return Circle()
+            .fill(gradient)
+            .frame(width: CGFloat(2 * r), height: CGFloat(2 * r))
+            .position(x: CGFloat(x), y: CGFloat(y))
     }
 
     private func change(to palette: [RGB]) {
