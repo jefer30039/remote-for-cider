@@ -16,6 +16,8 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1,2"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # shared solo se compila para arm64 (iosArm64 + iosSimulatorArm64): sin x86_64 en el simulador.
+    "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
 targets:
   RemoteForCider:
     type: application
