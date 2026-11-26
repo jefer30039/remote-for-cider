@@ -1,3 +1,4 @@
+import AVFoundation
 import CryptoKit
 import Foundation
 import UIKit
@@ -47,10 +48,25 @@ enum AnimatedArtworkFiles {
             if !FileManager.default.fileExists(atPath: target.path) { try FileManager.default.moveItem(at: temp, to: target) }
             prune()
             lockLog.notice("portada animada bajada: \(data.count, privacy: .public) bytes")
+            await describe(target)
             return target
         } catch {
             lockLog.error("portada animada: no se pudo bajar: \(error.localizedDescription, privacy: .public)")
             return nil
+        }
+    }
+
+    /// Anota si AVFoundation puede reproducir el archivo, su duración y su tamaño (para comprobar en
+    /// CI que el MP4 fragmentado de Apple vale como archivo local).
+    private static func describe(_ file: URL) async {
+        let asset = AVURLAsset(url: file)
+        do {
+            let (playable, duration) = try await asset.load(.isPlayable, .duration)
+            let track = try await asset.loadTracks(withMediaType: .video).first
+            let size = try await track?.load(.naturalSize) ?? .zero
+            lockLog.notice("portada animada local: reproducible \(playable, privacy: .public), \(duration.seconds, privacy: .public) s, \(Int(size.width), privacy: .public)×\(Int(size.height), privacy: .public)")
+        } catch {
+            lockLog.error("portada animada local: AVFoundation no la lee: \(error.localizedDescription, privacy: .public)")
         }
     }
 
