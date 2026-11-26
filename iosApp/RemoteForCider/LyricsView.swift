@@ -358,13 +358,10 @@ private struct LyricLineView: View {
     let progress: Shared.Progress
 
     var body: some View {
-        let text = Self.text(line)
-        if phase == 0 {
-            TimelineView(.animation(paused: !progress.playing)) { _ in
-                text.textRenderer(KaraokeRenderer(line: line, time: progress.positionNow()))
-            }
-        } else {
-            text.offset(y: phase < 0 && !line.words.isEmpty ? -0.05 * LyricsMetrics.fontSize : 0)
+        // Siempre la misma vista (si no, al cambiar de línea SwiftUI fundía la vieja en su sitio de antes
+        // mientras la nueva ya se había movido: se veían dos líneas montadas). Solo la activa se redibuja.
+        TimelineView(.animation(paused: phase != 0 || !progress.playing)) { _ in
+            Self.text(line).textRenderer(KaraokeRenderer(line: line, time: progress.positionNow(), phase: phase))
         }
     }
 
@@ -416,6 +413,8 @@ private func glowCurve(_ x: Double) -> Double {
 private struct KaraokeRenderer: TextRenderer {
     let line: LyricLine
     let time: Double
+    /// -1 pasada (alzada del todo), 0 activa, 1 siguiente (tal cual).
+    let phase: Int
 
     var displayPadding: EdgeInsets {
         let p = LyricsMetrics.fontSize * 0.4
@@ -423,6 +422,13 @@ private struct KaraokeRenderer: TextRenderer {
     }
 
     func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
+        guard phase == 0 else {
+            // Ya cantada: se queda alzada (Cider, `clp-cold-sung`) mientras se desvanece.
+            var c = ctx
+            if phase < 0, !line.words.isEmpty { c.translateBy(x: 0, y: -0.05 * LyricsMetrics.fontSize) }
+            for row in layout { for run in row { c.draw(run) } }
+            return
+        }
         let t = time
         let words = line.words
         let started = t >= line.startSec && t <= line.endSec + 0.15
