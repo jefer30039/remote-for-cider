@@ -54,6 +54,7 @@ suspend fun CiderApi.albumArtist(kind: String, id: String): HomeItem? {
  * `library-albums`, `library-playlists`), para "Compartir". Las playlists de la biblioteca se buscan en el
  * catálogo por su `playParams.globalId`. Null si no tiene (playlist propia sin publicar, álbum subido).
  */
+@Throws(Throwable::class)
 suspend fun CiderApi.collectionUrl(kind: String, id: String): String? {
     fun first(json: String) = CiderJson.parseToJsonElement(json).jsonObject["data"]?.jsonObject
         ?.get("data")?.jsonArray?.firstOrNull()?.jsonObject

@@ -47,17 +47,6 @@ suspend fun CiderApi.addToPlaylist(playlistId: String, items: List<PlayRequest>)
 /** `repeat` es palabra reservada en Swift. */
 val PlayerState.repeatMode: cider.remote.model.RepeatMode get() = repeat
 
-/**
- * Playlists de una categoría de Buscar (curador de Apple Music). Apple responde 400 con `limit` > 25
- * (`curatorPlaylists` de common pide 50): mientras se corrige allí, iOS usa esta.
- */
-@Throws(Throwable::class)
-suspend fun CiderApi.curatorPlaylistsPage(id: String): List<cider.remote.model.AmItem> =
-    CiderJson.decodeFromString(
-        cider.remote.model.Envelope.serializer(cider.remote.model.AmList.serializer()),
-        rawGet("v1/catalog/\$STOREFRONT/apple-curators/$id/playlists?limit=25"),
-    ).data.data
-
 /** Ajustes de audio del menú del equipo (null = Cider no lo da). */
 data class AudioState(
     val crossfade: Boolean?,

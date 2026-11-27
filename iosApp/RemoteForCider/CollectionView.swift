@@ -47,6 +47,8 @@ struct CollectionView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var addingToPlaylist = false
+    /// Enlace de Apple Music para Compartir; sin enlace (playlist propia sin publicar) no hay botón.
+    @State private var shareUrl: URL?
 
     private var key: String { "\(route.kind)/\(route.id)" }
 
@@ -81,9 +83,22 @@ struct CollectionView: View {
         .environment(\.colorScheme, .dark)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // Compartir junto al "…": la barra los agrupa en una cápsula (iOS 27) y aparece al tener el enlace.
+            if let shareUrl {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: shareUrl, subject: Text(route.title)) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) { moreMenu }
         }
         .task(id: key) { await load() }
+        .task(id: key) {
+            guard let api = store.api, shareUrl == nil else { return }
+            let url = (try? await api.collectionUrl(kind: route.kind, id: route.id)).flatMap { $0.flatMap(URL.init(string:)) }
+            if let url { withAnimation { shareUrl = url } }
+        }
         .alert("Rename Playlist", isPresented: $renaming) {
             TextField("Playlist Name", text: $newName)
             Button("Cancel", role: .cancel) {}

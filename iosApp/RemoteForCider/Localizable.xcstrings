@@ -61,26 +61,6 @@
         }
       }
     },
-    "^[%lld song](inflect: true)": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "^[%lld canción](inflect: true)"
-          }
-        }
-      }
-    },
-    "^[%lld song](inflect: true), ^[%lld minute](inflect: true)": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "^[%lld canción](inflect: true), ^[%lld minuto](inflect: true)"
-          }
-        }
-      }
-    },
     "About": {
       "localizations": {
         "es": {
@@ -111,6 +91,16 @@
         }
       }
     },
+    "Add to Library": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir a la biblioteca"
+          }
+        }
+      }
+    },
     "Add to a Playlist": {
       "localizations": {
         "es": {
@@ -127,16 +117,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Añadir a una playlist…"
-          }
-        }
-      }
-    },
-    "Add to Library": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Añadir a la biblioteca"
           }
         }
       }
@@ -641,7 +621,7 @@
         }
       }
     },
-    "Forget this computer": {
+    "Forget This Computer": {
       "localizations": {
         "es": {
           "stringUnit": {
@@ -651,7 +631,7 @@
         }
       }
     },
-    "Forget This Computer": {
+    "Forget this computer": {
       "localizations": {
         "es": {
           "stringUnit": {
@@ -841,22 +821,22 @@
         }
       }
     },
-    "No lyrics available": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No hay letra disponible"
-          }
-        }
-      }
-    },
     "No Results": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Sin resultados"
+          }
+        }
+      }
+    },
+    "No lyrics available": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hay letra disponible"
           }
         }
       }
@@ -1201,6 +1181,16 @@
         }
       }
     },
+    "Share": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartir"
+          }
+        }
+      }
+    },
     "Share Song…": {
       "localizations": {
         "es": {
@@ -1487,6 +1477,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tus playlists aparecerán aquí."
+          }
+        }
+      }
+    },
+    "^[%lld song](inflect: true)": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld canción](inflect: true)"
+          }
+        }
+      }
+    },
+    "^[%lld song](inflect: true), ^[%lld minute](inflect: true)": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "^[%lld canción](inflect: true), ^[%lld minuto](inflect: true)"
           }
         }
       }

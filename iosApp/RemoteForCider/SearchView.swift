@@ -298,7 +298,7 @@ struct CategoryView: View {
         .navigationTitle(name)
         .task(id: id) {
             guard let api = store.api else { return }
-            do { items = try await api.curatorPlaylistsPage(id: id) } catch { failure = error.localizedDescription }
+            do { items = try await api.curatorPlaylists(id: id) } catch { failure = error.localizedDescription }
         }
     }
 }
