@@ -211,10 +211,11 @@ struct SongsList: View {
                         .padding(.trailing, 30)
                 }
                 .buttonStyle(.plain)
+                // Solo en el botón de la fila: puesto al final lo heredaba también el "…".
+                .accessibilityIdentifier("songRow")
                 .overlay(alignment: .trailing) { SongMoreButton(type: "library-songs", id: s.id, name: s.name) }
                 .songMenu(type: "library-songs", id: s.id, name: s.name)
                 .queueSwipe(type: "library-songs", id: s.id, store: store)
-                .accessibilityIdentifier("songRow")
                 .onAppear { pager.near(i, store.api) }
             }
             footer(pager, empty: "Songs in your library will appear here.")

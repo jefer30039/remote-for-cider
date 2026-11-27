@@ -112,6 +112,22 @@ final class DemoFlows: XCTestCase {
         }
     }
 
+    /// "Acerca de" desde el menú ⋮ de la biblioteca.
+    func testAbout() {
+        let app = launch(["-demoTab", "library"])
+        let menu = app.buttons["connectionMenu"]
+        guard menu.waitForExistence(timeout: 10) else { return }
+        sleep(2)
+        menu.tap()
+        sleep(1)
+        let about = app.buttons["Acerca de Remote for Cider"]
+        if about.waitForExistence(timeout: 3) {
+            about.tap()
+            sleep(2)
+            save("79-acerca-de")
+        }
+    }
+
     /// Biblioteca: desplazar hacia abajo (la barra se minimiza con el miniplayer dentro) y volver arriba.
     func testScrollMinimizesTabBar() {
         record("20-recorrido-desplazar-minimiza-barra")
@@ -249,6 +265,14 @@ final class DemoFlows: XCTestCase {
                 app.swipeUp(velocity: .slow)
                 sleep(2)
                 save("83-album-abajo")
+                let more = app.buttons.matching(identifier: "songMore").element(boundBy: 2)
+                if more.exists {
+                    more.tap()
+                    sleep(2)
+                    save("83b-menu-fila")
+                    app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.08)).tap()
+                    sleep(1)
+                }
                 let track = app.descendants(matching: .any).matching(identifier: "trackRow").element(boundBy: 1)
                 if track.exists { track.tap(); sleep(2) }
                 back()

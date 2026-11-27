@@ -257,6 +257,8 @@ struct CollectionView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    // Solo en el botón de la fila: puesto al final lo heredaba también el "…".
+                    .accessibilityIdentifier("trackRow")
                     .disabled(!t.available)
                     .opacity(t.available ? 1 : 0.4)
                     // Fuera del botón de la fila: dentro de su etiqueta el menú no recibiría el toque.
@@ -269,7 +271,6 @@ struct CollectionView: View {
                     }
                     .padding(.horizontal, 20)
                     .songMenu(type: t.type, id: t.id, name: t.title, enabled: t.available)
-                    .accessibilityIdentifier("trackRow")
                 }
             }
         } else if let failure {

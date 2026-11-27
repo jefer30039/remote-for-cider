@@ -70,6 +70,7 @@ struct SongMoreButton: View {
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("More Options")
+        .accessibilityIdentifier("songMore")
         .sheet(isPresented: $addingToPlaylist) {
             PlaylistPicker(items: [PlayRequest(type: type, id: id)], title: name)
         }
