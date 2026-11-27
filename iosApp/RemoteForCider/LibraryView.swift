@@ -288,9 +288,10 @@ struct AboutView: View {
             List {
                 Section {
                     VStack(spacing: 6) {
-                        Image(systemName: "hifispeaker.and.homepod.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(Color.accentRed)
+                        Image("AboutIcon")
+                            .resizable()
+                            .frame(width: 80, height: 80)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .padding(.bottom, 6)
                         Text(verbatim: "Remote for Cider").font(.title2.bold())
                         Text("Version \(version) (\(build))").foregroundStyle(.secondary)
