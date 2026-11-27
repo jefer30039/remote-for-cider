@@ -236,6 +236,9 @@ def make_app(fx: Fixtures, player: Player) -> web.Application:
                 return page(p.queue, offset, limit, {"position": p.index})
             if path == "/api/v2/audio/volume":
                 return ok({"volume": p.volume})
+            if path == "/api/v2/playback/audio-quality":
+                # La grabación es AAC; en la demostración suena "en Atmos" para ver la insignia de la hoja.
+                return ok({"flavor": "bin_256", "flavorLabel": "Lossless (256kbps variant)"})
             if path.startswith("/api/v2/library/") and path.count("/") == 4:
                 # Páginas de la biblioteca: se recorta la grabación más grande.
                 found = fx.find(path, "offset=0&limit=100")

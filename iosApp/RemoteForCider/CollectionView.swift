@@ -132,11 +132,27 @@ struct CollectionView: View {
                 .padding(.top, 2)
                 .padding(.horizontal, 30)
             }
-            if let meta = metaLine {
-                Text(meta)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(secondary)
-                    .padding(.top, 6)
+            let q = quality
+            if metaLine != nil || q.atmos || q.lossless {
+                HStack(spacing: 5) {
+                    if let meta = metaLine { Text(meta) }
+                    if q.atmos {
+                        if metaLine != nil { Text(verbatim: "·") }
+                        // Logotipo oficial (vector), con las mayúsculas algo mayores que las del texto.
+                        Image("DolbyAtmos").resizable().scaledToFit().frame(height: 10)
+                            .accessibilityLabel("Dolby Atmos")
+                    }
+                    if q.lossless {
+                        if metaLine != nil || q.atmos { Text(verbatim: "·") }
+                        Image("AppleLossless").resizable().scaledToFit().frame(height: 8)
+                        Text(q.hiRes ? "Hi-Res Lossless" : "Lossless")
+                    }
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(secondary)
+                .lineLimit(1)
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
             }
 
             PlayShuffleButtons(play: { play(shuffle: false) }, shuffle: { play(shuffle: true) },
@@ -158,7 +174,8 @@ struct CollectionView: View {
         }
     }
 
-    /// "Género • año • Dolby Atmos • Lossless" en álbumes; "Actualizada hace 2 d" en playlists.
+    /// "Género • año" en álbumes; "Actualizada hace 2 d" en playlists. Los logos de Dolby Atmos y
+    /// Lossless van aparte (`qualityLogos`), detrás, como en Apple Music.
     private var metaLine: String? {
         var parts: [String] = []
         if route.isPlaylist {
@@ -171,10 +188,13 @@ struct CollectionView: View {
             if let genre = cover?.genre { parts.append(genre) }
             if let year = cover?.releaseYear { parts.append(year) }
         }
-        let all = (cover?.audioTraits ?? []) + traits
-        if all.contains("atmos") { parts.append("Dolby Atmos") }
-        if all.contains("hi-res-lossless") { parts.append("Hi-Res Lossless") } else if all.contains("lossless") { parts.append("Lossless") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Rasgos de audio del álbum o de alguna canción de la playlist: (Atmos, Lossless, Hi-Res).
+    private var quality: (atmos: Bool, lossless: Bool, hiRes: Bool) {
+        let all = (cover?.audioTraits ?? []) + traits
+        return (all.contains("atmos"), all.contains("lossless") || all.contains("hi-res-lossless"), all.contains("hi-res-lossless"))
     }
 
     /// Álbum de la biblioteca con menos canciones que el del catálogo: "Ver álbum completo".
@@ -204,6 +224,7 @@ struct CollectionView: View {
                                     Text(t.artist ?? "").font(.subheadline).foregroundStyle(secondary).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
+                                Color.clear.frame(width: 36)
                             }
                             .frame(height: 58)
                         } else {
@@ -216,6 +237,7 @@ struct CollectionView: View {
                                 Text(t.title).foregroundStyle(.white).lineLimit(1)
                                 if t.explicit { ExplicitBadge(size: 10).padding(.leading, 4) }
                                 Spacer(minLength: 8)
+                                Color.clear.frame(width: 36)
                             }
                             .frame(height: 48)
                         }
@@ -223,6 +245,10 @@ struct CollectionView: View {
                     .buttonStyle(.plain)
                     .disabled(!t.available)
                     .opacity(t.available ? 1 : 0.4)
+                    // Fuera del botón de la fila: dentro de su etiqueta el menú no recibiría el toque.
+                    .overlay(alignment: .trailing) {
+                        if t.available { SongMoreButton(type: t.type, id: t.id, name: t.title, tint: secondary) }
+                    }
                     .overlay(alignment: .bottom) {
                         Rectangle().fill(.white.opacity(0.12)).frame(height: 0.5)
                             .padding(.leading, route.isPlaylist ? 56 : 30)
@@ -252,7 +278,11 @@ struct CollectionView: View {
                     Text(copyright).padding(.top, 2)
                 }
                 if extras?.digitalMaster == true {
-                    Label("Apple Digital Master", systemImage: "waveform")
+                    Label {
+                        Text("Apple Digital Master")
+                    } icon: {
+                        Image("AppleDigitalMaster").resizable().scaledToFit().frame(width: 15, height: 14)
+                    }
                         .padding(.top, 6)
                 }
             }

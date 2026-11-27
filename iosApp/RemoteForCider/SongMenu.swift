@@ -34,8 +34,6 @@ extension View {
 }
 
 private struct SongMenuModifier: ViewModifier {
-    @Environment(RemoteStore.self) private var store
-    @Environment(\.openRoute) private var openRoute
     let type: String
     let id: String
     let name: String
@@ -45,31 +43,68 @@ private struct SongMenuModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contextMenu {
-                if enabled {
-                    Section {
-                        Button("Play", systemImage: "play") { store.play(type: type, id: id) }
-                        Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") { store.playNext(type: type, id: id) }
-                        Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") { store.playLast(type: type, id: id) }
-                    }
-                    Section {
-                        Button("Add to a Playlist…", systemImage: "text.badge.plus") { addingToPlaylist = true }
-                    }
-                    Section {
-                        Button("Go to Album", systemImage: "square.stack") {
-                            Task { if let r = await links()?.album?.route { openRoute(r) } }
-                        }
-                        Button("Go to Artist", systemImage: "music.microphone") {
-                            Task { if let r = await links()?.artist?.route { openRoute(r) } }
-                        }
-                        Button("Share Song…", systemImage: "square.and.arrow.up") {
-                            Task { if let url = await links()?.url.flatMap(URL.init(string:)) { share(url) } }
-                        }
-                    }
-                }
+                if enabled { SongMenuItems(type: type, id: id, addToPlaylist: { addingToPlaylist = true }) }
             }
             .sheet(isPresented: $addingToPlaylist) {
                 PlaylistPicker(items: [PlayRequest(type: type, id: id)], title: name)
             }
+    }
+}
+
+/// "…" visible al final de una fila de canción, con el mismo menú que al mantener pulsado.
+struct SongMoreButton: View {
+    let type: String
+    let id: String
+    let name: String
+    var tint: Color = .secondary
+    @State private var addingToPlaylist = false
+
+    var body: some View {
+        Menu {
+            SongMenuItems(type: type, id: id, addToPlaylist: { addingToPlaylist = true })
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("More Options")
+        .sheet(isPresented: $addingToPlaylist) {
+            PlaylistPicker(items: [PlayRequest(type: type, id: id)], title: name)
+        }
+    }
+}
+
+/// Opciones del menú de canción (Apple Music): reproducir, a continuación, al final; añadir a una
+/// playlist; ir al álbum o al artista; compartir.
+struct SongMenuItems: View {
+    @Environment(RemoteStore.self) private var store
+    @Environment(\.openRoute) private var openRoute
+    let type: String
+    let id: String
+    let addToPlaylist: () -> Void
+
+    var body: some View {
+        Section {
+            Button("Play", systemImage: "play") { store.play(type: type, id: id) }
+            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") { store.playNext(type: type, id: id) }
+            Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") { store.playLast(type: type, id: id) }
+        }
+        Section {
+            Button("Add to a Playlist…", systemImage: "text.badge.plus", action: addToPlaylist)
+        }
+        Section {
+            Button("Go to Album", systemImage: "square.stack") {
+                Task { if let r = await links()?.album?.route { openRoute(r) } }
+            }
+            Button("Go to Artist", systemImage: "music.microphone") {
+                Task { if let r = await links()?.artist?.route { openRoute(r) } }
+            }
+            Button("Share Song…", systemImage: "square.and.arrow.up") {
+                Task { if let url = await links()?.url.flatMap(URL.init(string:)) { share(url) } }
+            }
+        }
     }
 
     private func links() async -> SongLinks? {

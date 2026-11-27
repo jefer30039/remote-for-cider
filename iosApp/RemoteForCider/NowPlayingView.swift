@@ -25,6 +25,8 @@ struct NowPlayingView: View {
     /// Con la letra y sonando, los controles se repliegan a los 4 s sin tocar nada (Apple Music).
     @State private var controlsHidden = false
     @State private var touches = 0
+    /// "Dolby Atmos", "Lossless" o "Hi-Res Lossless" según lo que Cider dice que suena.
+    @State private var quality: String?
 
     private static let modeChange = Animation.spring(response: 0.5, dampingFraction: 0.86)
 
@@ -184,7 +186,8 @@ struct NowPlayingView: View {
                     TimelineView(.periodic(from: .now, by: 0.25)) { _ in
                         ScrubBar(
                             position: player?.progress.positionNow() ?? 0,
-                            duration: player?.progress.durationSec ?? 0
+                            duration: player?.progress.durationSec ?? 0,
+                            badge: quality
                         ) { store.seek(to: $0) }
                     }
                     .frame(width: w - 2 * edge, height: 50)
@@ -233,6 +236,13 @@ struct NowPlayingView: View {
             .offset(x: -insets.leading, y: -insets.top)
         }
         .onAppear { sheet.appeared() }
+        // Se vuelve a leer cada 5 s: también cambia al activar o quitar Atmos, no solo con la canción.
+        .task(id: store.player?.track?.playParams?.id) {
+            while !Task.isCancelled {
+                if let api = store.api, let q = try? await api.audioQuality() { quality = q.badge }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
         .task(id: "\(mode)-\(store.player?.isPlaying == true)-\(touches)") {
             controlsHidden = false
             guard mode == .lyrics, store.player?.isPlaying == true else { return }
@@ -501,6 +511,7 @@ private struct ThinTrack: View {
 struct ScrubBar: View {
     let position: Double
     let duration: Double
+    var badge: String? = nil
     let onSeek: (Double) -> Void
     @State private var dragging: Double?
 
@@ -531,6 +542,7 @@ struct ScrubBar: View {
             }
             .font(.system(size: 11, weight: .medium).monospacedDigit())
             .vibrant(Vibrancy.time)
+            .overlay { QualityBadge(badge: badge) }
             .frame(height: 14)
             .padding(.top, -8)
         }
@@ -538,6 +550,33 @@ struct ScrubBar: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Playback position")
         .accessibilityValue("\(formatTime(shown)) / \(formatTime(duration))")
+    }
+}
+
+/// Insignia de calidad entre los tiempos, como iOS 26: el logotipo de Dolby Atmos sin recuadro en el
+/// color de los tiempos (87,3 pt de ancho); "Lossless" en un recuadro translúcido con la onda.
+private struct QualityBadge: View {
+    let badge: String?
+
+    var body: some View {
+        if let badge {
+            if badge == "Dolby Atmos" {
+                Image("DolbyAtmos").resizable().scaledToFit()
+                    .frame(width: 87.3, height: 12.33)
+                    .vibrant(Vibrancy.time)
+                    .accessibilityLabel("Dolby Atmos")
+            } else {
+                HStack(spacing: 6.6) {
+                    Image("AppleLossless").resizable().scaledToFit().frame(width: 15, height: 9)
+                    Text(badge).font(.system(size: 11, weight: .medium))
+                }
+                .vibrant(Vibrancy.icon)
+                .padding(.leading, 6.6)
+                .padding(.trailing, 7.2)
+                .frame(height: 21)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            }
+        }
     }
 }
 

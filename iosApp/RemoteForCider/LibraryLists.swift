@@ -208,8 +208,10 @@ struct SongsList: View {
             ForEach(Array(pager.items.enumerated()), id: \.element.id) { i, s in
                 Button { play(from: i) } label: {
                     SongRow(title: s.name, subtitle: s.artistName, artwork: s.artwork)
+                        .padding(.trailing, 30)
                 }
                 .buttonStyle(.plain)
+                .overlay(alignment: .trailing) { SongMoreButton(type: "library-songs", id: s.id, name: s.name) }
                 .songMenu(type: "library-songs", id: s.id, name: s.name)
                 .queueSwipe(type: "library-songs", id: s.id, store: store)
                 .accessibilityIdentifier("songRow")
