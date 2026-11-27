@@ -1,3 +1,4 @@
+import AVKit
 import Shared
 import SwiftUI
 
@@ -103,7 +104,15 @@ struct ShelfView: View {
         case .songs:
             SongColumns(items: shelf.items)
         case .videos:
-            carousel(width: 260, spacing: 12) { VideoTile(item: $0) }
+            carousel(width: 260, spacing: 12) { item in
+                // Cider no reproduce vídeos: se ven en el iPhone (vista previa de 30 s de los vídeos
+                // musicales; los de "Más para ver", enteros), como en Android.
+                Button {
+                    if let url = item.videoUrl.flatMap(URL.init(string:)) { playVideo(url, title: item.name) }
+                } label: { VideoTile(item: item) }
+                .buttonStyle(.plain)
+                .disabled(item.videoUrl == nil)
+            }
         default:
             carousel(width: 166, spacing: 14) { item in
                 CoverTile(
@@ -234,6 +243,22 @@ private struct FeatureCard: View {
 }
 
 /// Vídeo en 16:9 ("Videos musicales"): Cider no los reproduce, se enseñan sin acción.
+/// Reproductor a pantalla completa del sistema (con imagen en imagen), sobre lo que esté delante.
+@MainActor
+func playVideo(_ url: URL, title: String) {
+    guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+          var top = scene.keyWindow?.rootViewController else { return }
+    while let next = top.presentedViewController { top = next }
+    let item = AVPlayerItem(url: url)
+    let meta = AVMutableMetadataItem()
+    meta.identifier = .commonIdentifierTitle
+    meta.value = title as NSString
+    item.externalMetadata = [meta]
+    let controller = AVPlayerViewController()
+    controller.player = AVPlayer(playerItem: item)
+    top.present(controller, animated: true) { controller.player?.play() }
+}
+
 private struct VideoTile: View {
     let item: HomeItem
 
@@ -241,6 +266,18 @@ private struct VideoTile: View {
         VStack(alignment: .leading, spacing: 0) {
             CoverImage(artwork: item.artwork, pixels: 520, corner: 8)
                 .aspectRatio(16 / 9, contentMode: .fit)
+                .overlay(alignment: .bottomLeading) {
+                    // De los vídeos musicales solo hay la vista previa de 30 s (el completo lleva DRM).
+                    if item.type == "music-videos", item.videoUrl != nil {
+                        Label("Preview", systemImage: "play.fill")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.55), in: Capsule())
+                            .foregroundStyle(.white)
+                            .padding(8)
+                    }
+                }
             HStack(spacing: 4) {
                 Text(item.name).font(.subheadline).lineLimit(1)
                 if item.explicit { ExplicitBadge(size: 10) }

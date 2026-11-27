@@ -9,6 +9,8 @@ struct TrackItem: Identifiable, Hashable {
     let type: String
     let id: String
     let number: Int?
+    /// Disco en álbumes de varios discos (catálogo: `discNumber`; biblioteca: cuando la numeración vuelve a empezar).
+    var disc: Int = 1
     let title: String
     let artist: String?
     let durationMs: Int64?
@@ -210,7 +212,19 @@ struct CollectionView: View {
     private func trackList(secondary: Color) -> some View {
         if let tracks {
             LazyVStack(spacing: 0) {
+                let discs = route.isPlaylist ? 1 : (tracks.map(\.disc).max() ?? 1)
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { i, t in
+                    // Álbumes de varios discos: "Disco 1", "Disco 2"… encima de su primera canción.
+                    if discs > 1, i == 0 || tracks[i - 1].disc != t.disc {
+                        Text("Disc \(t.disc)")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20)
+                            .padding(.top, i == 0 ? 4 : 22)
+                            .padding(.bottom, 6)
+                            .accessibilityAddTraits(.isHeader)
+                    }
                     Button { play(from: i) } label: {
                         if route.isPlaylist {
                             HStack(spacing: 12) {
@@ -416,14 +430,21 @@ struct CollectionView: View {
                 if got.isEmpty || offset >= page.total { break }
             }
             let unplayable = await off.value
+            // Cider no da el disco de las canciones de la biblioteca: un disco nuevo empieza cuando la
+            // numeración vuelve a bajar.
+            var disc = 1
+            var last = 0
             return songs.map { s in
-                TrackItem(type: "library-songs", id: s.id, number: album ? s.trackNumber?.intValue : nil, title: s.name,
-                          artist: s.artistName, durationMs: s.durationMs, artwork: s.artwork, available: !unplayable.contains(s.id))
+                let n = s.trackNumber?.intValue
+                if album, let n { if n < last { disc += 1 }; last = n }
+                return TrackItem(type: "library-songs", id: s.id, number: album ? n : nil, disc: disc, title: s.name,
+                                 artist: s.artistName, durationMs: s.durationMs, artwork: s.artwork, available: !unplayable.contains(s.id))
             }
         }
         let items = try await api.catalogTracks(type: c.kind, id: c.id)
         return items.enumerated().map { i, t in
-            TrackItem(type: t.type, id: t.id, number: i + 1, title: t.name, artist: t.attributes?.artistName,
+            TrackItem(type: t.type, id: t.id, number: t.attributes?.trackNumber?.intValue ?? (i + 1),
+                      disc: t.attributes?.discNumber?.intValue ?? 1, title: t.name, artist: t.attributes?.artistName,
                       durationMs: t.attributes?.durationInMillis?.int64Value, artwork: t.artwork,
                       available: t.attributes?.playParams != nil)
         }

@@ -232,6 +232,9 @@ data class AmAttributes(
     /** Sin esto Apple no deja reproducirla (canciones aún no publicadas: "Track 3" / "Unknown"). */
     val playParams: PlayParams? = null,
     val audioTraits: List<String> = emptyList(),
+    /** Canciones de álbum: número y disco (cabeceras "Disco 1 / Disco 2" en álbumes de varios discos). */
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
 )
 
 @Serializable
