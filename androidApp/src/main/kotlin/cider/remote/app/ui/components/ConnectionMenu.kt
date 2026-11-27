@@ -57,57 +57,66 @@ import cider.remote.app.ui.Apple
  */
 @Composable
 fun ConnectionMenuButton(host: String, onForget: () -> Unit, backdrop: GlassBackdrop? = null, tint: (() -> Color)? = null) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), onClick = { menu = true },
+            tint = tint?.invoke() ?: Apple.colors.label, backdrop = backdrop ?: LocalGlassBackdrop.current)
+        ConnectionMenu(host, onForget, menu) { menu = false }
+    }
+}
+
+/**
+ * El menú de [ConnectionMenuButton] sin el botón (y sus diálogos): para colgarlo de otro ⋮, como el único
+ * de la cabecera de MainScreen, que según la página abre este o el del álbum. Va dentro de la caja del botón.
+ */
+@Composable
+fun ConnectionMenu(host: String, onForget: () -> Unit, expanded: Boolean, onDismiss: () -> Unit) {
     val session = LocalContext.current.app.session
     val searching by session.searching.collectAsStateWithLifecycle()
-    var menu by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var about by remember { mutableStateOf(false) }
     var updating by remember { mutableStateOf<cider.remote.app.data.Update?>(null) }
     val updates = LocalContext.current.app.updates
     val updateStatus by updates.status.collectAsStateWithLifecycle(UpdateStatus(true, 0L, null))
     val uriHandler = LocalUriHandler.current
-    Box {
-        GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), onClick = { menu = true },
-            tint = tint?.invoke() ?: Apple.colors.label, backdrop = backdrop ?: LocalGlassBackdrop.current)
-        GlassMenu(menu, { menu = false }) {
+    GlassMenu(expanded, onDismiss) {
+        DropdownMenuItem(
+            text = { Text(if (searching) stringResource(R.string.connection_searching) else stringResource(R.string.connection_connected_to, host), color = Apple.colors.secondaryLabel) },
+            leadingIcon = { Icon(Icons.Filled.Link, null) }, onClick = {}, enabled = false,
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.connection_find)) },
+            leadingIcon = { Icon(Icons.Filled.Search, null) },
+            enabled = !searching,
+            onClick = { onDismiss(); session.searchNow() },
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.connection_change_address)) },
+            leadingIcon = { Icon(Icons.Filled.Edit, null) },
+            onClick = { onDismiss(); editing = true },
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.connection_forget)) },
+            leadingIcon = { Icon(Icons.Filled.LinkOff, null) },
+            onClick = { onDismiss(); onForget() },
+        )
+        updateStatus.update?.let { update ->
             DropdownMenuItem(
-                text = { Text(if (searching) stringResource(R.string.connection_searching) else stringResource(R.string.connection_connected_to, host), color = Apple.colors.secondaryLabel) },
-                leadingIcon = { Icon(Icons.Filled.Link, null) }, onClick = {}, enabled = false,
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.connection_find)) },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
-                enabled = !searching,
-                onClick = { menu = false; session.searchNow() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.connection_change_address)) },
-                leadingIcon = { Icon(Icons.Filled.Edit, null) },
-                onClick = { menu = false; editing = true },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.connection_forget)) },
-                leadingIcon = { Icon(Icons.Filled.LinkOff, null) },
-                onClick = { menu = false; onForget() },
-            )
-            updateStatus.update?.let { update ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.update_available, update.version), color = Apple.colors.accent) },
-                    leadingIcon = { Icon(Icons.Outlined.SystemUpdate, null, tint = Apple.colors.accent) },
-                    onClick = { menu = false; updating = update },
-                )
-            }
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.look_menu)) },
-                leadingIcon = { Icon(Icons.Outlined.Speed, null) },
-                onClick = { menu = false; cider.remote.app.ui.Appearance.chooserOpen = true },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.about_title)) },
-                leadingIcon = { Icon(Icons.Outlined.Info, null) },
-                onClick = { menu = false; about = true },
+                text = { Text(stringResource(R.string.update_available, update.version), color = Apple.colors.accent) },
+                leadingIcon = { Icon(Icons.Outlined.SystemUpdate, null, tint = Apple.colors.accent) },
+                onClick = { onDismiss(); updating = update },
             )
         }
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.look_menu)) },
+            leadingIcon = { Icon(Icons.Outlined.Speed, null) },
+            onClick = { onDismiss(); cider.remote.app.ui.Appearance.chooserOpen = true },
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.about_title)) },
+            leadingIcon = { Icon(Icons.Outlined.Info, null) },
+            onClick = { onDismiss(); about = true },
+        )
     }
     if (editing) HostDialog(host, onDismiss = { editing = false }, onSave = { session.changeHost(it); editing = false })
     if (about) AboutDialog(updates, updateStatus, onDismiss = { about = false }, onUpdate = { about = false; updating = it })

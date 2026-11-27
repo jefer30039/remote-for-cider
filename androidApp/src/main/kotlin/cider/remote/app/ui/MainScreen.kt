@@ -104,12 +104,14 @@ import cider.remote.CiderRemote
 import cider.remote.app.data.SavedConnection
 import cider.remote.app.ui.components.CircleButton
 import cider.remote.app.ui.components.TintedIcon
-import cider.remote.app.ui.components.ConnectionMenuButton
+import cider.remote.app.ui.components.ConnectionMenu
+import androidx.compose.ui.graphics.TransformOrigin
 import cider.remote.app.ui.components.glass
 import cider.remote.app.ui.components.GlassBackdrop
 import cider.remote.app.ui.components.glassSource
 import cider.remote.app.ui.components.LocalGlassBackdrop
 import cider.remote.app.ui.components.GlassCircleButton
+import cider.remote.app.ui.components.GlassMoreGroup
 import cider.remote.app.ui.components.glassFade
 import kotlinx.coroutines.flow.first
 import cider.remote.app.ui.components.glassEdge
@@ -130,6 +132,9 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.util.lerp
 import cider.remote.app.ui.components.rememberBackdropSampler
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import cider.remote.collectionUrl
+import cider.remote.app.ui.components.shareLink
 import kotlin.math.roundToInt
 import cider.remote.app.ui.components.combinedClickableCompat
 import cider.remote.app.ui.home.HomeScreen
@@ -178,6 +183,8 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
     // Transiciones de iOS entre páginas y estado guardado de cada una (al volver, la lista sigue donde estaba).
     val saveable = rememberSaveableStateHolder()
     val navScope = rememberCoroutineScope()
+    // Enlaces de Apple Music de álbumes y playlists ya pedidos (null = no tiene), para Compartir.
+    val shareUrls = remember { androidx.compose.runtime.mutableStateMapOf<String, String?>() }
     val pages = remember { PageStack(navScope, stacks, saveable) { tab } }
     val pagesSettled = remember { derivedStateOf { pages.transition == null } }
     val back: () -> Unit = { pages.pop() }
@@ -322,20 +329,24 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
         // Las páginas con portada (álbum, artista) dibujan bajo la barra de estado.
         fun listPadding(nested: Boolean) = PaddingValues(top = if (wide) wideTop else top + if (nested) TopButtonsHeight else 0.dp, bottom = bottom)
         val heroPadding = PaddingValues(bottom = bottom)
-        // Opacidad de lo que depende de la página (botones de cabecera) durante una transición:
-        // se funde con el mismo progreso con que se desliza la página.
+        // Fase de los botones de cabecera (GlassCircleButton.phase) durante una transición. Como en iOS
+        // (docs/botones-vidrio-ios.md), los botones son de la barra y no se deslizan con la página: el que
+        // tienen las dos se queda quieto, el de la que se va se disuelve en la primera mitad del recorrido y
+        // el de la que llega se materializa desde casi la mitad. En un pop (o el gesto de atrás) `cover`
+        // baja de 1 a 0 y las mismas ventanas lo dan al revés.
         fun shownFor(test: (PageEntry) -> Boolean): () -> Float = {
             val t = pages.transition
             if (t == null) (if (test(pages.top(tab))) 1f else 0f)
             else {
                 val c = t.cover()
-                val under = if (test(t.under)) 1f else 0f
-                val over = if (test(t.over)) 1f else 0f
-                // Zoom: los botones de vidrio de una página y otra no se cruzan (los de la que queda debajo
-                // se van en la primera mitad y los de la de arriba llegan en la segunda): cada botón de
-                // vidrio a la vista son dos capas con desenfoque por fotograma.
-                if (t.zoom != null && under != over) (if (over > under) ((c - 0.5f) / 0.5f) else (1f - c / 0.5f)).coerceIn(0f, 1f)
-                else lerp(under, over, c)
+                val under = test(t.under)
+                val over = test(t.over)
+                when {
+                    under == over -> if (over) 1f else 0f
+                    over -> ((c - ButtonEnterFrom) / (1f - ButtonEnterFrom)).coerceIn(0f, 1f)
+                    // Zoom: no se cruzan (cada botón de vidrio a la vista son dos capas con desenfoque por fotograma).
+                    else -> (1f - c / (if (t.zoom != null) ButtonEnterFrom else ButtonExitUntil)).coerceIn(0f, 1f)
+                }
             }
         }
         fun anyShows(test: (PageEntry) -> Boolean) = test(topEntry) || (transition != null && (test(transition.over) || test(transition.under)))
@@ -697,25 +708,80 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
 
         if (anyShows { it.nested }) {
             // De vidrio, como el ⋮ de las raíces; el icono sigue el tono de lo que hay detrás
-            // (negro sobre carátulas claras, blanco sobre oscuras). Se funde al volver a la raíz.
+            // (negro sobre carátulas claras, blanco sobre oscuras). Se materializa al entrar en una
+            // página anidada y se disuelve al volver a la raíz; entre dos anidadas se queda quieto.
             val backShown = remember(transition, topEntry) { shownFor { it.nested } }
             GlassCircleButton(
                 Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onClick = back,
-                modifier = Modifier.padding(start = SideMargin, top = top + 13.dp).graphicsLayer { alpha = backShown(); compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }.skipWhenClear { backShown() },
-                tint = backLabel.value, backdrop = haze,
+                modifier = Modifier.padding(start = SideMargin, top = top + 13.dp),
+                tint = backLabel.value, backdrop = haze, phase = backShown, anchor = TransformOrigin(0f, 0.5f),
             )
         }
-        // El ⋮ de álbum/playlist también aquí, fuera de la página: un botón de vidrio dentro
-        // de la página dibujaría la página dentro de sí misma (ciclo en HWUI, desbordamiento de pila).
-        val menuEntry = listOfNotNull(topEntry, transition?.over, transition?.under).firstOrNull { it.route is Route.Collection }
-        val menuRoute = menuEntry?.route as? Route.Collection
-        if (menuRoute != null) Box(
-            Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin)
-                .graphicsLayer { alpha = shownFor { it.route is Route.Collection }(); compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }.skipWhenClear { shownFor { it.route is Route.Collection }() },
-        ) {
-            var menu by remember { mutableStateOf(false) }
-            GlassCircleButton(Icons.Outlined.MoreVert, stringResource(R.string.action_more), { menu = true }, tint = topLabel.value, backdrop = haze)
-            PlayMenu(remote, menu, { menu = false }, menuRoute.kind, menuRoute.id, menuRoute.title)
+        // Un solo ⋮ arriba a la derecha: el de las raíces (conexión) y el de álbum/playlist. Antes eran
+        // dos botones en el mismo rincón que se fundían uno sobre otro (a mitad, dos vidrios al 50 %); en
+        // iOS un botón igual en las dos pantallas se queda quieto. Solo se desplaza los 3 dp que separan
+        // sus alturas (colocación, no capa, para que el vidrio lea bien lo de detrás) y abre el menú de la
+        // página que más se ve. En álbum/playlist se estira en cápsula con Compartir a su izquierda, como
+        // la barra de iOS 26/27 (`GlassMoreGroup`). Fuera de la página: un botón de vidrio dentro de ella
+        // dibujaría la página dentro de sí misma (ciclo en HWUI, desbordamiento de pila).
+        val rootMenu: (PageEntry) -> Boolean = { !it.nested && it.route != Route.Search }
+        val isCollection: (PageEntry) -> Boolean = { it.route is Route.Collection }
+        val hasMore: (PageEntry) -> Boolean = { isCollection(it) || rootMenu(it) }
+        if (anyShows(hasMore)) {
+            val menuRoute = listOfNotNull(topEntry, transition?.over, transition?.under).firstNotNullOfOrNull { it.route as? Route.Collection }
+            val moreShown = remember(transition, topEntry) { shownFor(hasMore) }
+            val shareShown = remember(transition, topEntry) { shownFor(isCollection) }
+            val rootTop = if (wide) 13.dp else 16.dp
+            fun topOf(e: PageEntry) = if (e.route is Route.Collection) 13.dp else rootTop
+            // La página cuyo menú abre: la de arriba desde la mitad de la transición (si lo tiene).
+            val current by remember(transition, topEntry) {
+                derivedStateOf {
+                    val t = pages.transition
+                    if (t == null) topEntry
+                    else listOf(if (t.cover() >= 0.5f) t.over else t.under, t.over, t.under).first(hasMore)
+                }
+            }
+            val shift = remember(transition, topEntry) {
+                {
+                    val t = pages.transition
+                    if (t == null || !hasMore(t.over) || !hasMore(t.under)) topOf(current) - 13.dp
+                    else (topOf(t.under) + (topOf(t.over) - topOf(t.under)) * t.cover().coerceIn(0f, 1f)) - 13.dp
+                }
+            }
+            // Enlace de Apple Music para Compartir: se pide al abrir la página para que el toque abra la
+            // hoja enseguida.
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val shareKey = menuRoute?.let { "${it.kind}/${it.id}" }
+            LaunchedEffect(shareKey) {
+                if (menuRoute != null && shareKey !in shareUrls)
+                    runCatching { remote.api.collectionUrl(menuRoute.kind, menuRoute.id) }.onSuccess { shareUrls[shareKey!!] = it }
+            }
+            val share: () -> Unit = share@{
+                val route = menuRoute ?: return@share
+                val key = shareKey!!
+                navScope.launch {
+                    val url = if (key in shareUrls) shareUrls[key]
+                    else runCatching { remote.api.collectionUrl(route.kind, route.id) }.getOrNull()?.also { shareUrls[key] = it }
+                    if (url != null) shareLink(context, url)
+                    else android.widget.Toast.makeText(context, context.getString(R.string.share_no_link), android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            var opened by remember { mutableStateOf<Boolean?>(null) } // true: álbum/playlist; false: conexión
+            val onCollection = current.route is Route.Collection
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin)
+                    .offset { IntOffset(0, shift().roundToPx()) },
+            ) {
+                GlassMoreGroup(
+                    Icons.Outlined.MoreVert, stringResource(R.string.action_more), { opened = current.route is Route.Collection },
+                    AppleIcons.Share, stringResource(R.string.action_share), share,
+                    // En tablet el de las raíces iba con el color del tema (allí no se muestrea esa zona).
+                    tint = if (wide && !onCollection) Apple.colors.label else topLabel.value,
+                    backdrop = haze, phase = moreShown, grow = shareShown,
+                )
+                if (menuRoute != null) PlayMenu(remote, opened == true, { opened = null }, menuRoute.kind, menuRoute.id, menuRoute.title)
+                ConnectionMenu(connection.endpoint.host, onForget, opened == false) { opened = null }
+            }
         }
 
         // Desvanecido del contenido bajo las barras flotantes, en vez de un fondo sólido (suave: hasta el 50 % del color de fondo, 40 % negro en álbum y artista).
@@ -734,12 +800,6 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
             },
         )
 
-        // Teléfono: el ⋮ de las raíces queda fijo arriba a la derecha, a la altura del título grande.
-        val rootMenu: (PageEntry) -> Boolean = { !it.nested && it.route != Route.Search }
-        if (!wide && anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 16.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)(); compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }.skipWhenClear { shownFor(rootMenu)() }) {
-            ConnectionMenuButton(connection.endpoint.host, onForget, backdrop = haze, tint = { topLabel.value })
-        }
-
         if (wide) {
             // La misma barra de vidrio líquido que el teléfono (lente que se arrastra entre pestañas,
             // tono adaptado a lo que hay detrás), con textos; el ≡ queda a su izquierda.
@@ -752,10 +812,6 @@ fun MainScreen(remote: CiderRemote, connection: SavedConnection, onForget: () ->
                 SidebarButton(haze, wideLabel) { sidebar = true }
                 Spacer(Modifier.width(WideBarGap))
                 WideTabBar(tab, pageBackdrop, select, label = wideLabel, container = wideVeil)
-            }
-            // Opciones de conexión arriba a la derecha en las raíces.
-            if (anyShows(rootMenu)) Box(Modifier.align(Alignment.TopEnd).padding(top = top + 13.dp, end = SideMargin).graphicsLayer { alpha = shownFor(rootMenu)(); compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }.skipWhenClear { shownFor(rootMenu)() }) {
-                ConnectionMenuButton(connection.endpoint.host, onForget, backdrop = haze)
             }
             if (showMini) WideMiniPlayer(
                 remote, state, haze, onOpen = openSheet,
@@ -842,7 +898,11 @@ private val WideThumbSize = 40.dp
  * No dibuja el contenido mientras [alpha] es 0. Una pieza de vidrio invisible seguía en el árbol y rehacía
  * sus capas (desenfoque y sombreado) en cada fotograma en que cambiaba la página de detrás.
  */
-private fun Modifier.skipWhenClear(alpha: () -> Float): Modifier = drawWithContent { if (alpha() > 0f) drawContent() }
+
+/** Botones de cabecera en una transición: el que llega empieza a materializarse aquí; el que se va acaba aquí de disolverse. */
+private const val ButtonEnterFrom = 0.45f
+
+private const val ButtonExitUntil = 0.55f
 
 /** Desenfoque máximo de la página de atrás durante el zoom de álbumes y playlists, y el intermedio. */
 private val ZoomBackBlur = 40.dp

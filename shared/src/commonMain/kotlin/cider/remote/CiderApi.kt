@@ -328,7 +328,7 @@ class CiderApi(
 
     /** Playlists de una categoría (curador de Apple Music). */
     suspend fun curatorPlaylists(id: String): List<AmItem> =
-        amapiRaw("v1/catalog/\$STOREFRONT/apple-curators/$id/playlists?limit=50")
+        amapiRaw("v1/catalog/\$STOREFRONT/apple-curators/$id/playlists?limit=25")
 
     /** Álbumes de un artista del catálogo. */
     suspend fun catalogArtistAlbums(artistId: String): List<AmItem> =

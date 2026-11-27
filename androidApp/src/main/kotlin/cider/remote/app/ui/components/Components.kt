@@ -138,6 +138,8 @@ fun CircleButton(
     size: Dp = 40.dp,
     border: Color? = Apple.colors.circleBorder,
     iconSize: Dp = size * 0.55f,
+    /** Capa del icono (a todo el círculo, para que un desenfoque no salga cortado en recto). */
+    iconLayer: Modifier? = null,
 ) {
     Box(
         modifier.size(size).clip(CircleShape).background(background)
@@ -146,7 +148,10 @@ fun CircleButton(
             .semantics { this.contentDescription = contentDescription; role = Role.Button },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(iconSize))
+        if (iconLayer == null) Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(iconSize))
+        else Box(Modifier.matchParentSize().then(iconLayer), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(iconSize))
+        }
     }
 }
 

@@ -27,6 +27,23 @@ object AppleIcons {
         }.build()
     }
 
+    /** `square.and.arrow.up`: compartir de iOS (caja abierta arriba y flecha que sale de ella). */
+    val Share: ImageVector by lazy {
+        ImageVector.Builder("Share", 24.dp, 24.dp, 24f, 24f).apply {
+            path(stroke = SolidColor(Color.Black), strokeLineWidth = 1.7f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+                // Caja con el hueco arriba en el centro por donde sale la flecha.
+                moveTo(8.8f, 9f); lineTo(7.5f, 9f)
+                arcToRelative(2.5f, 2.5f, 0f, false, false, -2.5f, 2.5f); lineTo(5f, 18.5f)
+                arcToRelative(2.5f, 2.5f, 0f, false, false, 2.5f, 2.5f); lineTo(16.5f, 21f)
+                arcToRelative(2.5f, 2.5f, 0f, false, false, 2.5f, -2.5f); lineTo(19f, 11.5f)
+                arcToRelative(2.5f, 2.5f, 0f, false, false, -2.5f, -2.5f); lineTo(15.2f, 9f)
+                // Flecha.
+                moveTo(12f, 14.6f); lineTo(12f, 2.9f)
+                moveTo(8.4f, 6.4f); lineTo(12f, 2.8f); lineTo(15.6f, 6.4f)
+            }
+        }.build()
+    }
+
     /** `quote.bubble`: letra. */
     val Lyrics: ImageVector by lazy {
         ImageVector.Builder("Lyrics", 24.dp, 24.dp, 24f, 24f).apply {

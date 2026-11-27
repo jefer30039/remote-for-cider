@@ -46,3 +46,23 @@ suspend fun CiderApi.albumArtist(kind: String, id: String): HomeItem? {
     val album = root["data"]?.jsonObject?.get("data")?.jsonArray?.firstOrNull()?.jsonObject ?: return null
     return album.obj("relationships")?.obj("artists")?.get("data")?.jsonArray?.firstOrNull()?.jsonObject?.toHomeItem(preferNotes = false)
 }
+
+/**
+ * Enlace de Apple Music de un álbum o playlist ([kind] como en las rutas: `albums`, `playlists`,
+ * `library-albums`, `library-playlists`), para "Compartir". Las playlists de la biblioteca se buscan en el
+ * catálogo por su `playParams.globalId`. Null si no tiene (playlist propia sin publicar, álbum subido).
+ */
+suspend fun CiderApi.collectionUrl(kind: String, id: String): String? {
+    fun first(json: String) = CiderJson.parseToJsonElement(json).jsonObject["data"]?.jsonObject
+        ?.get("data")?.jsonArray?.firstOrNull()?.jsonObject
+    val path = when (kind) {
+        "library-albums" -> "v1/me/library/albums/$id/catalog"
+        "library-playlists" -> {
+            val global = first(rawGet("v1/me/library/playlists/$id"))?.obj("attributes")?.obj("playParams")?.str("globalId")
+                ?: return null
+            "v1/catalog/\$STOREFRONT/playlists/$global"
+        }
+        else -> "v1/catalog/\$STOREFRONT/$kind/$id"
+    }
+    return first(rawGet(path))?.obj("attributes")?.str("url")
+}
