@@ -46,6 +46,10 @@ struct SearchView: View {
     private func search() async {
         let q = term.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { results = nil; return }
+        if let link = AppleMusicLink(q) {
+            await open(link)
+            return
+        }
         try? await Task.sleep(for: .milliseconds(350))
         guard !Task.isCancelled, let api = store.api else { return }
         do {
@@ -53,6 +57,26 @@ struct SearchView: View {
             failure = nil
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription }
+        }
+    }
+
+    /// Enlace pegado: la canción suena; álbum, playlist o artista se abren.
+    private func open(_ link: AppleMusicLink) async {
+        switch link {
+        case .song(let id):
+            store.play(type: "songs", id: id)
+            term = ""
+        case .artist(let id):
+            term = ""
+            openRoute(.artist(id: id, name: "", catalog: true))
+        case .album(let id), .playlist(let id):
+            let kind: String
+            if case .album = link { kind = "albums" } else { kind = "playlists" }
+            let item = try? await store.api?.catalogItem(type: kind, id: id)
+            term = ""
+            openRoute(.collection(CollectionRoute(kind: kind, id: id, title: item?.name ?? "",
+                                                  subtitle: item?.attributes?.artistName ?? item?.attributes?.curatorName,
+                                                  artwork: item?.artwork)))
         }
     }
 
@@ -271,5 +295,28 @@ struct CategoryView: View {
             guard let api = store.api else { return }
             do { items = try await api.curatorPlaylistsPage(id: id) } catch { failure = error.localizedDescription }
         }
+    }
+}
+
+/// Enlace de Apple Music pegado en Buscar (`music.apple.com/…/album/nombre/ID?i=canción`,
+/// `/playlist/…/pl.…`, `/artist/…/ID`, `/song/…/ID`): qué abrir o reproducir.
+enum AppleMusicLink {
+    case song(String)
+    case album(String)
+    case playlist(String)
+    case artist(String)
+
+    init?(_ text: String) {
+        guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = url.host, host.hasSuffix("music.apple.com") else { return nil }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        guard let id = parts.last else { return nil }
+        if let song = query?.first(where: { $0.name == "i" })?.value { self = .song(song); return }
+        if parts.contains("song") { self = .song(id) }
+        else if parts.contains("album") { self = .album(id) }
+        else if parts.contains("playlist") { self = .playlist(id) }
+        else if parts.contains("artist") { self = .artist(id) }
+        else { return nil }
     }
 }

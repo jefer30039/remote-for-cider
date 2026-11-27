@@ -51,3 +51,41 @@ suspend fun CiderApi.curatorPlaylistsPage(id: String): List<cider.remote.model.A
         cider.remote.model.Envelope.serializer(cider.remote.model.AmList.serializer()),
         rawGet("v1/catalog/\$STOREFRONT/apple-curators/$id/playlists?limit=25"),
     ).data.data
+
+/** Ajustes de audio del menú del equipo (null = Cider no lo da). */
+data class AudioState(
+    val crossfade: Boolean?,
+    val crossfadeSeconds: Int,
+    /** Atmos suena si `enabled` y la preferencia del dispositivo no es `off`. */
+    val atmos: Boolean?,
+    /** Modo de Atmos del dispositivo para volver a él al encenderlo (`binaural` en un PC estéreo). */
+    val atmosMode: String,
+    /** `off`, `game` o `antifatigue`; null si no está disponible. */
+    val listeningMode: String?,
+)
+
+suspend fun CiderApi.audioState(): AudioState {
+    val c = runCatching { audioSetting("crossfade") }.getOrNull()
+    val a = runCatching { audioSetting("atmos") }.getOrNull()
+    val pref = (a?.get("devicePreferences") as? kotlinx.serialization.json.JsonObject)?.get("default")?.jsonPrimitive?.content
+    val l = runCatching { audioSetting("listening-mode") }.getOrNull()
+    return AudioState(
+        crossfade = c?.get("enabled")?.jsonPrimitive?.content?.let { it == "true" },
+        crossfadeSeconds = c?.get("durationSec")?.jsonPrimitive?.content?.toDoubleOrNull()?.toInt() ?: 5,
+        atmos = a?.let { it["enabled"]?.jsonPrimitive?.content == "true" && pref != "off" },
+        atmosMode = pref?.takeIf { it != "off" } ?: "binaural",
+        listeningMode = l?.takeIf { it["available"]?.jsonPrimitive?.content != "false" }?.get("mode")?.jsonPrimitive?.content,
+    )
+}
+
+suspend fun CiderApi.setCrossfade(enabled: Boolean) = setAudioSetting("crossfade", buildJsonObject { put("enabled", enabled) })
+
+suspend fun CiderApi.setCrossfadeSeconds(seconds: Int) = setAudioSetting("crossfade", buildJsonObject { put("durationSec", seconds) })
+
+/** Cider lo aplica desde la siguiente canción. */
+suspend fun CiderApi.setAtmos(on: Boolean, mode: String) = setAudioSetting("atmos", buildJsonObject {
+    if (on) put("enabled", true)
+    put("devicePreferences", buildJsonObject { put("default", if (on) mode else "off") })
+})
+
+suspend fun CiderApi.setListeningMode(mode: String) = setAudioSetting("listening-mode", buildJsonObject { put("mode", mode) })

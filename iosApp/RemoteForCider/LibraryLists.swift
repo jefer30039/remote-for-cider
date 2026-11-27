@@ -299,7 +299,7 @@ private struct CapsuleFill: ButtonStyle {
 }
 
 /// Final de una lista paginada: cargando, vacía o con error.
-@ViewBuilder
+@MainActor @ViewBuilder
 private func footer<T>(_ pager: Pager<T>, empty: LocalizedStringKey) -> some View {
     if pager.loading {
         LoadingView().listRowSeparator(.hidden)

@@ -29,6 +29,11 @@ struct MiniPlayer: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                } else if placement != .inline, track == nil, case .offline = store.link {
+                    Text(store.searching ? LocalizedStringKey("Looking for the computer on the network…") : LocalizedStringKey("Tap to find your computer"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
@@ -51,7 +56,9 @@ struct MiniPlayer: View {
         .padding(.leading, 10)
         .padding(.trailing, 6)
         .contentShape(Rectangle())
-        .onTapGesture { if track != nil { open() } }
+        .onTapGesture {
+            if track != nil { open() } else if case .offline = store.link { store.searchNow() }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("miniPlayer")
     }

@@ -53,6 +53,8 @@ final class RemoteStore {
     @ObservationIgnored private var finder: Task<Void, Never>?
     /// Portada animada de la canción actual (se consulta al cambiar de canción).
     let covers = AnimatedCovers()
+    /// Temporizador de apagado (pausa Cider).
+    let sleep = SleepTimer()
     /// Tras perder la conexión el silencio sigue un rato (si no, en segundo plano iOS suspendería la
     /// app y no volvería a conectar); si Cider se cerró de verdad, se corta y no gasta batería.
     @ObservationIgnored private var lockScreenGrace: Task<Void, Never>?

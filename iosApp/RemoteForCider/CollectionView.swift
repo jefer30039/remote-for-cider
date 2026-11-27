@@ -331,7 +331,8 @@ struct CollectionView: View {
         tracks = CollectionCache.tracks[key]
         cover = CollectionCache.covers[key]
         guard let api = store.api else { return }
-        async let coverTask: AnimatedCover? = try? api.animatedCover(kind: route.kind, id: route.id)
+        let kind = route.kind, id = route.id
+        let coverTask = Task { try? await api.animatedCover(kind: kind, id: id) }
         do {
             let fresh = try await Self.loadTracks(api, route)
             tracks = fresh
@@ -340,7 +341,7 @@ struct CollectionView: View {
         } catch {
             if tracks == nil { failure = error.localizedDescription }
         }
-        if let fresh = await coverTask {
+        if let fresh = await coverTask.value {
             cover = fresh
             CollectionCache.covers[key] = fresh
         }
@@ -362,18 +363,22 @@ struct CollectionView: View {
         if c.isLibrary {
             let album = c.kind == "library-albums"
             // Cider no dice cuáles no se pueden reproducir: se pregunta a Apple a la vez.
-            async let off: Set<String> = (try? await api.libraryUnplayable(type: album ? "albums" : "playlists", id: c.id, max: 1000)) ?? []
+            let off = Task { (try? await api.libraryUnplayable(type: album ? "albums" : "playlists", id: c.id, max: 1000)) ?? [] }
             var songs: [LibrarySong] = []
             var offset: Int32 = 0
             while true {
-                let page = album ? try await api.albumSongs(id: c.id, offset: offset, limit: 100)
-                                 : try await api.playlistSongs(id: c.id, offset: offset, limit: 100)
+                let page: Page<LibrarySong>
+                if album {
+                    page = try await api.albumSongs(id: c.id, offset: offset, limit: 100)
+                } else {
+                    page = try await api.playlistSongs(id: c.id, offset: offset, limit: 100)
+                }
                 let got = page.items.compactMap { $0 as? LibrarySong }
                 songs += got
                 offset += Int32(got.count)
                 if got.isEmpty || offset >= page.total { break }
             }
-            let unplayable = await off
+            let unplayable = await off.value
             return songs.map { s in
                 TrackItem(type: "library-songs", id: s.id, number: album ? s.trackNumber?.intValue : nil, title: s.name,
                           artist: s.artistName, durationMs: s.durationMs, artwork: s.artwork, available: !unplayable.contains(s.id))

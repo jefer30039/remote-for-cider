@@ -302,7 +302,13 @@ struct NowPlayingView: View {
             }
             .offset(x: -M.bottomSpacing)
             .accessibilityIdentifier("lyricsButton")
-            SheetIcon("laptopcomputer", label: "Computer") {}
+            ComputerButton(label: AnyView(
+                Image(systemName: "laptopcomputer")
+                    .font(.system(size: 20))
+                    .vibrant(Vibrancy.icon)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            ))
             SheetIcon("list.bullet", label: "Up Next", active: mode == .queue) {
                 withAnimation(Self.modeChange) { mode = mode == .queue ? .artwork : .queue }
             }
@@ -432,6 +438,27 @@ private struct MoreMenu: View {
             }
             Button(player?.shuffle == true ? LocalizedStringKey("Turn Off Shuffle") : LocalizedStringKey("Turn On Shuffle"), systemImage: "shuffle") {
                 store.toggleShuffle()
+            }
+            Menu {
+                Button("15 Minutes") { store.sleep.set(minutes: 15, store: store) }
+                Button("30 Minutes") { store.sleep.set(minutes: 30, store: store) }
+                Button("45 Minutes") { store.sleep.set(minutes: 45, store: store) }
+                Button("1 Hour") { store.sleep.set(minutes: 60, store: store) }
+                Button("When Current Song Ends") { store.sleep.set(minutes: 0, store: store) }
+                if store.sleep.active {
+                    Button("Turn Off Timer", role: .destructive) { store.sleep.set(minutes: nil, store: store) }
+                }
+            } label: {
+                if let end = store.sleep.endsAt {
+                    Label { Text("Sleep Timer · \(end, style: .timer)") } icon: { Image(systemName: "moon.zzz.fill") }
+                } else if store.sleep.endOfTrack {
+                    Label("Sleep Timer · End of Song", systemImage: "moon.zzz.fill")
+                } else {
+                    Label("Sleep Timer", systemImage: "moon.zzz")
+                }
+            }
+            if let url = player?.track?.url.flatMap(URL.init(string:)) {
+                ShareLink(item: url) { Label("Share Song…", systemImage: "square.and.arrow.up") }
             }
         } label: {
             Image(systemName: "ellipsis")

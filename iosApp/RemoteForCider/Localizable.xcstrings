@@ -1,12 +1,62 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%lld s": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld s"
+          }
+        }
+      }
+    },
     "%lld+ songs": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Más de %lld canciones"
+          }
+        }
+      }
+    },
+    "1 Hour": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 hora"
+          }
+        }
+      }
+    },
+    "15 Minutes": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "15 minutos"
+          }
+        }
+      }
+    },
+    "30 Minutes": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 minutos"
+          }
+        }
+      }
+    },
+    "45 Minutes": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "45 minutos"
           }
         }
       }
@@ -121,6 +171,16 @@
         }
       }
     },
+    "Anti-fatigue": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antifatiga"
+          }
+        }
+      }
+    },
     "Apple Digital Master": {
       "localizations": {
         "es": {
@@ -191,6 +251,16 @@
         }
       }
     },
+    "Bass for the Speaker": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Graves para la bocina"
+          }
+        }
+      }
+    },
     "Born or Formed": {
       "localizations": {
         "es": {
@@ -237,6 +307,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cambiar dirección…"
+          }
+        }
+      }
+    },
+    "Cider applies Dolby Atmos from the next song.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cider aplica Dolby Atmos desde la siguiente canción."
           }
         }
       }
@@ -306,7 +386,7 @@
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Computadora"
+            "value": "Equipo"
           }
         }
       }
@@ -451,12 +531,32 @@
         }
       }
     },
+    "Crossfade": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crossfade"
+          }
+        }
+      }
+    },
     "Did you install the bridge?": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "¿Instalaste el puente?"
+          }
+        }
+      }
+    },
+    "Dolby Atmos": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dolby Atmos"
           }
         }
       }
@@ -517,6 +617,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Olvidar este PC"
+          }
+        }
+      }
+    },
+    "Game": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Juego"
           }
         }
       }
@@ -597,6 +707,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Biblioteca"
+          }
+        }
+      }
+    },
+    "Listening Mode": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modo de escucha"
+          }
+        }
+      }
+    },
+    "Looking for the computer on the network…": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando el PC en la red…"
           }
         }
       }
@@ -717,6 +847,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "No hay nada a continuación"
+          }
+        }
+      }
+    },
+    "Off": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivado"
           }
         }
       }
@@ -1051,6 +1191,36 @@
         }
       }
     },
+    "Sleep Timer": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temporizador"
+          }
+        }
+      }
+    },
+    "Sleep Timer · %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temporizador · %@"
+          }
+        }
+      }
+    },
+    "Sleep Timer · End of Song": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temporizador · al acabar la canción"
+          }
+        }
+      }
+    },
     "Song": {
       "localizations": {
         "es": {
@@ -1077,6 +1247,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Las canciones de tu biblioteca aparecerán aquí."
+          }
+        }
+      }
+    },
+    "Switches EasyEffects on the computer between the Bocina and Normal presets.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia EasyEffects del PC entre los preajustes Bocina y Normal."
+          }
+        }
+      }
+    },
+    "Tap to find your computer": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca para buscar el PC"
           }
         }
       }
@@ -1117,6 +1307,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Desactivar aleatorio"
+          }
+        }
+      }
+    },
+    "Turn Off Timer": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivar temporizador"
           }
         }
       }
@@ -1177,6 +1377,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Esperando a que lo permitas en Cider…"
+          }
+        }
+      }
+    },
+    "When Current Song Ends": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al acabar la canción"
           }
         }
       }
