@@ -8,8 +8,12 @@ struct ShelvesPage: View {
     enum Source: Hashable { case home, new, radio }
 
     @Environment(RemoteStore.self) private var store
+    @Environment(\.openRoute) private var openRoute
     let source: Source
     @State private var shelves: [HomeShelf]?
+    /// `-demoOpenHero YES` (CI): abre la primera tarjeta grande al cargar. Buscarla con XCUITest tardaba
+    /// minutos (con las portadas animadas en marcha cada consulta del árbol de accesibilidad es lentísima).
+    @MainActor private static var heroOpened = !UserDefaults.standard.bool(forKey: "demoOpenHero")
     @State private var failure: String?
 
     @MainActor private static var cache: [Source: [HomeShelf]] = [:]
@@ -59,6 +63,11 @@ struct ShelvesPage: View {
             shelves = fresh
             Self.cache[source] = fresh
             failure = nil
+            if !Self.heroOpened, let route = fresh.first(where: { $0.kind == .hero })?.items.lazy.compactMap(\.route).first {
+                Self.heroOpened = true
+                try? await Task.sleep(for: .seconds(2))
+                openRoute(route)
+            }
         } catch {
             if shelves == nil { failure = error.localizedDescription }
         }

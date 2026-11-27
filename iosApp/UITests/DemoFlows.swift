@@ -334,30 +334,30 @@ final class DemoFlows: XCTestCase {
     /// Inicio, Nuevo y Radio: desplazar cada una y abrir una tarjeta grande desde Inicio.
     func testShelves() {
         record("28-recorrido-inicio-nuevo-radio")
+        // Sin consultas al árbol de accesibilidad: con las portadas animadas de Inicio cada una tardaba
+        // minutos. Se arrastra por coordenadas y la tarjeta la abre la app (-demoOpenHero).
+        func drag(_ app: XCUIApplication, up: Bool) {
+            let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.75 : 0.3))
+            let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.3 : 0.75))
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: 800, thenHoldForDuration: 0.1)
+        }
         var app = launch(["-demoTab", "home"])
-        sleep(5)
+        sleep(6)
         save("95-inicio")
-        app.swipeUp(velocity: .slow)
+        drag(app, up: true)
         sleep(2)
         save("96-inicio-abajo")
-        let hero = app.descendants(matching: .any).matching(identifier: "heroCard").firstMatch
-        app.swipeDown(velocity: .slow)
-        sleep(1)
-        if hero.exists {
-            hero.tap()
-            sleep(7)
-            save("97-inicio-tarjeta-abierta")
-        }
-        app.terminate()
+        app = launch(["-demoTab", "home", "-demoOpenHero", "YES"])
+        sleep(12)
+        save("97-inicio-tarjeta-abierta")
         app = launch(["-demoTab", "new"])
-        sleep(5)
+        sleep(6)
         save("98-nuevo")
-        app.swipeUp(velocity: .slow)
+        drag(app, up: true)
         sleep(2)
         save("98b-nuevo-abajo")
-        app.terminate()
         app = launch(["-demoTab", "radio"])
-        sleep(5)
+        sleep(6)
         save("99-radio")
     }
 
