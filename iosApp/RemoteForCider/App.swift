@@ -18,7 +18,10 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if store.connection == nil {
+            if UserDefaults.standard.bool(forKey: "glassLab") {
+                // `-glassLab YES`: banco de animaciones del sistema para copiarlas en Android (CI).
+                GlassLab()
+            } else if store.connection == nil {
                 ConnectView()
             } else {
                 MainTabs()

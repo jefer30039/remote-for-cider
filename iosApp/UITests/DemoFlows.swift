@@ -38,6 +38,80 @@ final class DemoFlows: XCTestCase {
         return app
     }
 
+    // MARK: - Banco de vidrio (para copiar animaciones de iOS 27 en Android)
+
+    private func labButton(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        let b = app.buttons[id]
+        _ = b.waitForExistence(timeout: 8)
+        return b
+    }
+
+    private func edgeSwipeBack(_ app: XCUIApplication, velocity: XCUIGestureVelocity) {
+        let w = app.windows.firstMatch
+        let start = w.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)),
+                    withVelocity: velocity, thenHoldForDuration: 0.1)
+    }
+
+    /// (1a) Empujar una página con compartir + "…" en la barra y volver (botón y gesto desde el borde).
+    func testGlassLabPush() {
+        record("30-vidrio-empujar-y-volver")
+        let app = launch(["-glassLab", "YES"])
+        sleep(3)
+        for _ in 0..<2 {
+            labButton(app, "labPush").tap()
+            sleep(2)
+            app.navigationBars.buttons.firstMatch.tap()
+            sleep(2)
+        }
+        labButton(app, "labPush").tap()
+        sleep(2)
+        edgeSwipeBack(app, velocity: .slow)
+        sleep(2)
+        labButton(app, "labPush").tap()
+        sleep(2)
+        edgeSwipeBack(app, velocity: .fast)
+        sleep(2)
+    }
+
+    /// (1b) Añadir y quitar compartir junto al "…" con `withAnimation`: en la barra y en un
+    /// `GlassEffectContainer` con `glassEffectID`.
+    func testGlassLabToggle() {
+        record("31-vidrio-anadir-boton")
+        let app = launch(["-glassLab", "YES"])
+        sleep(3)
+        for _ in 0..<4 {
+            labButton(app, "labToggleBar").tap()
+            sleep(2)
+        }
+        for _ in 0..<4 {
+            labButton(app, "labToggleContainer").tap()
+            sleep(2)
+        }
+    }
+
+    /// (2) El "…" de la barra que se abre en menú y se cierra, en la raíz y en la página empujada.
+    func testGlassLabMenu() {
+        record("32-vidrio-menu-de-barra")
+        let app = launch(["-glassLab", "YES"])
+        sleep(3)
+        let outside = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.88))
+        for _ in 0..<3 {
+            labButton(app, "labMenuRoot").tap()
+            sleep(2)
+            outside.tap()
+            sleep(2)
+        }
+        labButton(app, "labPush").tap()
+        sleep(2)
+        for _ in 0..<2 {
+            labButton(app, "labMenuPushed").tap()
+            sleep(2)
+            outside.tap()
+            sleep(2)
+        }
+    }
+
     /// Biblioteca: desplazar hacia abajo (la barra se minimiza con el miniplayer dentro) y volver arriba.
     func testScrollMinimizesTabBar() {
         record("20-recorrido-desplazar-minimiza-barra")
