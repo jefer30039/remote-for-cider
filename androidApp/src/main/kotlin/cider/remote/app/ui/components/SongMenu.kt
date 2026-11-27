@@ -128,7 +128,7 @@ fun SongMenu(remote: CiderRemote, expanded: Boolean, onDismiss: () -> Unit, type
             QuickAction(AppleIcons.Play, stringResource(R.string.action_play)) { run { remote.api.playItem(type, id) } }
             QuickAction(Icons.AutoMirrored.Rounded.PlaylistPlay, stringResource(R.string.action_play_next)) { run { remote.api.queueAddNext(type, id) } }
             val url = links?.url
-            if (url != null) QuickAction(Icons.Rounded.Share, stringResource(R.string.action_share)) { onDismiss(); share(context, url) }
+            if (url != null) QuickAction(Icons.Rounded.Share, stringResource(R.string.action_share)) { onDismiss(); shareLink(context, url) }
         }
         HorizontalDivider(color = Apple.colors.separator)
         MenuRow(Icons.AutoMirrored.Rounded.PlaylistAdd, stringResource(R.string.action_add_to_playlist)) {
@@ -275,7 +275,7 @@ fun PlaylistNameDialog(title: String, initial: String, confirm: String, onDismis
     )
 }
 
-private fun share(context: Context, url: String) {
+fun shareLink(context: Context, url: String) {
     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
     context.startActivity(Intent.createChooser(send, null))
 }

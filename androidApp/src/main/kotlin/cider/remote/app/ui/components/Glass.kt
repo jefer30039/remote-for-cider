@@ -1,5 +1,7 @@
 package cider.remote.app.ui.components
 
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -7,6 +9,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.border
 import androidx.compose.runtime.Composable
@@ -511,16 +522,165 @@ fun GlassCircleButton(
     modifier: Modifier = Modifier,
     tint: Color = Apple.colors.label,
     backdrop: GlassBackdrop? = LocalGlassBackdrop.current,
+    /**
+     * Cuánto se ha materializado (0 = no está, 1 = en reposo), leído al dibujar. Como los botones de
+     * barra de iOS 26 (docs/botones-vidrio-ios.md): no es un fundido; el vidrio llega primero, encogiendo
+     * de 1,15 a 1 hacia [anchor], y el icono después, borroso, enfocándose al final. Al irse, al revés:
+     * primero el icono y luego el vidrio vacío. Con 0 no se dibuja.
+     */
+    phase: (() -> Float)? = null,
+    /** Hacia dónde converge la escala: el borde del botón que da al lado de la pantalla. */
+    anchor: TransformOrigin = TransformOrigin.Center,
 ) {
+    val lite = cider.remote.app.ui.Appearance.lite
+    val shell = if (phase == null) modifier else modifier.graphicsLayer {
+        val g = ButtonPhase.glass(phase())
+        alpha = g
+        // En modo rendimiento (como Movimiento reducido en iOS), solo opacidad.
+        if (!lite) {
+            val s = 1f + ButtonPhase.Overshoot * (1f - g)
+            scaleX = s
+            scaleY = s
+            transformOrigin = anchor
+        }
+        compositingStrategy = CompositingStrategy.ModulateAlpha
+    }.drawWithContent { if (phase() > 0f) drawContent() }
+    val iconLayer = if (phase == null) null else Modifier.graphicsLayer {
+        val c = ButtonPhase.icon(phase())
+        alpha = c
+        renderEffect = if (lite || c >= 1f || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) null
+        else ButtonPhase.blur(((1f - c) * ButtonPhase.IconBlur.toPx()).toInt() / 2 * 2)
+    }
     // Sin fondo de vidrio o en modo rendimiento: círculo liso.
-    if (backdrop == null || cider.remote.app.ui.Appearance.lite) {
-        CircleButton(icon, contentDescription, onClick, modifier, background = Apple.colors.circle.copy(alpha = 0.85f), tint = tint)
+    if (backdrop == null || lite) {
+        CircleButton(icon, contentDescription, onClick, shell, background = Apple.colors.circle.copy(alpha = 0.85f), tint = tint, iconLayer = iconLayer)
         return
     }
     CircleButton(
         icon, contentDescription, onClick,
-        modifier = modifier.shadow(8.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.3f))
+        modifier = shell.shadow(8.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.3f))
             .clip(CircleShape).glass(backdrop, style = GlassStyle.button()).glassEdge(CircleShape),
-        background = Color.Transparent, border = null, tint = tint,
+        background = Color.Transparent, border = null, tint = tint, iconLayer = iconLayer,
     )
+}
+
+/**
+ * ⋮ de cabecera que se estira en cápsula con un segundo botón a su izquierda (compartir en álbum/playlist),
+ * como la barra de navegación de iOS 26/27 (grabado en el simulador, docs/botones-vidrio-ios.md): con [grow]
+ * subiendo, el ⋮ se emborrona, el vidrio se alarga hacia la izquierda con el borde derecho quieto y sale algo
+ * más grande que en reposo, el icono nuevo entra borroso y todo se asienta y se enfoca al final. Al bajar,
+ * al revés. [phase] es la materialización del grupo entero, como en [GlassCircleButton].
+ */
+@Composable
+fun GlassMoreGroup(
+    more: androidx.compose.ui.graphics.vector.ImageVector,
+    moreDescription: String,
+    onMore: () -> Unit,
+    extra: androidx.compose.ui.graphics.vector.ImageVector,
+    extraDescription: String,
+    onExtra: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Apple.colors.label,
+    backdrop: GlassBackdrop? = LocalGlassBackdrop.current,
+    phase: () -> Float,
+    grow: () -> Float,
+) {
+    val lite = cider.remote.app.ui.Appearance.lite
+    val shell = modifier
+        .layout { measurable, _ ->
+            val w = (GroupShape.Size + GroupShape.Extra * GroupShape.width(grow())).roundToPx()
+            val h = GroupShape.Size.roundToPx()
+            val p = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(w, h))
+            layout(w, h) { p.place(0, 0) }
+        }
+        .graphicsLayer {
+            val g = ButtonPhase.glass(phase())
+            alpha = g
+            if (!lite) {
+                val s = (1f + ButtonPhase.Overshoot * (1f - g)) * (1f + GroupShape.Swell * GroupShape.bump(grow()))
+                scaleX = s
+                scaleY = s
+                transformOrigin = TransformOrigin(1f, 0.5f)
+            }
+            compositingStrategy = CompositingStrategy.ModulateAlpha
+        }
+        .drawWithContent { if (phase() > 0f) drawContent() }
+    val surface = if (backdrop == null || lite)
+        shell.clip(CircleShape).background(Apple.colors.circle.copy(alpha = 0.85f))
+    else shell.shadow(8.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.3f))
+        .clip(CircleShape).glass(backdrop, style = GlassStyle.button()).glassEdge(CircleShape)
+    // Icono con su propia capa (opacidad y desenfoque leídos al dibujar), a todo el círculo de 40 dp;
+    // [blur] en fracción del desenfoque de materializar.
+    fun iconLayer(visible: () -> Float, blur: () -> Float) = Modifier.graphicsLayer {
+        val c = visible() * ButtonPhase.icon(phase())
+        alpha = c
+        val px = if (lite || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) 0 else (maxOf(blur(), 1f - ButtonPhase.icon(phase())) * ButtonPhase.IconBlur.toPx()).toInt() / 2 * 2
+        renderEffect = ButtonPhase.blur(px)
+    }
+    androidx.compose.foundation.layout.Box(surface) {
+        // El nuevo, centrado a 64 dp del borde derecho: aparece a medida que la cápsula se alarga.
+        GroupIcon(
+            extra, extraDescription, onExtra, tint,
+            enabled = { grow() > 0.5f },
+            modifier = Modifier.align(Alignment.CenterEnd).offset(x = -GroupShape.ExtraCenter + GroupShape.Size / 2)
+                .then(iconLayer(visible = { GroupShape.extraIcon(grow()) }, blur = { 1f - GroupShape.extraIcon(grow()) })),
+        )
+        // El ⋮ se queda en su sitio y solo se emborrona a mitad del cambio.
+        GroupIcon(
+            more, moreDescription, onMore, tint, enabled = { true },
+            modifier = Modifier.align(Alignment.CenterEnd)
+                .then(iconLayer(visible = { 1f - 0.5f * GroupShape.bump(grow()) }, blur = { GroupShape.bump(grow()) * GroupShape.MoreBlur })),
+        )
+    }
+}
+
+@Composable
+private fun GroupIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    tint: Color,
+    enabled: () -> Boolean,
+    modifier: Modifier,
+) {
+    androidx.compose.foundation.layout.Box(
+        modifier.size(GroupShape.Size).clip(CircleShape)
+            .combinedClickableCompat(onClick = { if (enabled()) onClick() })
+            .semantics { contentDescription = description; role = Role.Button },
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(GroupShape.Size * 0.55f))
+    }
+}
+
+/** Medidas de la cápsula ⋮ + compartir, tomadas de la barra de iOS 27 (relativas a su alto). */
+private object GroupShape {
+    val Size = 40.dp
+    /** Cápsula de 82 dp: ancho 2,06 veces el alto. */
+    val Extra = 42.dp
+    /** Centro del icono nuevo desde el borde derecho (el del ⋮ va a 20 dp): separación 1,1 veces el alto. */
+    val ExtraCenter = 64.dp
+    /** Desenfoque del ⋮ a mitad del cambio, como fracción del de materializar (12 dp). */
+    const val MoreBlur = 0.5f
+    /** Cuánto más grande sale la cápsula a mitad del cambio. */
+    const val Swell = 0.08f
+    /** El vidrio se alarga en el primer 60 % del tramo, frenando al final. */
+    fun width(t: Float): Float { val x = (t / 0.6f).coerceIn(0f, 1f); return 1f - (1f - x) * (1f - x) }
+    fun bump(t: Float) = kotlin.math.sin(Math.PI.toFloat() * t.coerceIn(0f, 1f))
+    fun extraIcon(t: Float) = ((t - 0.35f) / 0.65f).coerceIn(0f, 1f)
+}
+
+/**
+ * Las dos partes de la materialización de un botón de barra, medidas en iOS 26 por `liquid_glass_widgets`
+ * (ver docs/botones-vidrio-ios.md): el vidrio ocupa casi todo el tramo y el icono entra a partir del 40 %.
+ * Con una sola curva sirve para los dos sentidos: al bajar la fase, el icono se va antes que el vidrio.
+ */
+private object ButtonPhase {
+    const val Overshoot = 0.15f
+    val IconBlur = 12.dp
+    fun glass(t: Float) = (t / 0.9f).coerceIn(0f, 1f)
+    fun icon(t: Float) = ((t - 0.4f) / 0.6f).coerceIn(0f, 1f)
+    private val blurs = HashMap<Int, androidx.compose.ui.graphics.RenderEffect>()
+    /** En caché por radio (pasos de 2 px): crear el efecto en cada fotograma costaba más que dibujarlo. */
+    fun blur(px: Int) = if (px <= 0) null else blurs.getOrPut(px) { blurEffect(px.toFloat()) }
 }

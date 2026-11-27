@@ -153,6 +153,7 @@
     <string name="artist_load_error">Couldn\u2019t load the artist</string>
     <string name="label_genre">Genre</string>
     <string name="action_share">Share</string>
+    <string name="share_no_link">There is no Apple Music link to share</string>
     <string name="action_add_to_playlist">Add to Playlist</string>
     <string name="action_go_to_album">Go to Album</string>
     <string name="action_go_to_artist">Go to Artist</string>
