@@ -131,33 +131,21 @@ final class DemoFlows: XCTestCase {
             }
             return false
         }
-        // iOS 27: "Appearance" (antes "Display & Brightness"); dentro, Liquid Glass o directamente las opciones.
+        // iOS 27: Ajustes › Appearance › Liquid Glass tiene una barra "Tint Amount" de Clear (izquierda) a
+        // Tinted (derecha), por defecto en el medio (las capturas de siempre). Se lleva al máximo de tinte.
         let display = open(["Appearance", "Apariencia", "Display & Brightness", "Pantalla y brillo"], in: settings)
         save("61-ajustes-pantalla")
-        write("64-ajustes-arbol.txt", settings.debugDescription)
-        var tinted = display && open(["Tinted", "Teñido"], in: settings)
-        var glass = tinted
-        if display && !tinted {
-            glass = open(["Liquid Glass"], in: settings)
-            save("62-ajustes-liquid-glass")
-            write("64-ajustes-arbol-liquid-glass.txt", settings.debugDescription)
-            tinted = glass && open(["Tinted", "Teñido"], in: settings)
-        }
-        if !tinted {
-            // Último recurso: el buscador de Ajustes.
-            settings.terminate()
-            settings.launch()
+        let glass = display && open(["Liquid Glass"], in: settings)
+        save("62-ajustes-liquid-glass")
+        write("64-ajustes-arbol-liquid-glass.txt", settings.debugDescription)
+        var tinted = false
+        let slider = settings.sliders.firstMatch
+        if glass, slider.waitForExistence(timeout: 3) {
+            slider.adjust(toNormalizedSliderPosition: 1)
             sleep(2)
-            let field = settings.searchFields.firstMatch
-            if field.waitForExistence(timeout: 3) {
-                field.tap()
-                field.typeText("Liquid Glass")
-                sleep(2)
-                save("62-ajustes-buscar")
-                write("64-ajustes-arbol-buscar.txt", settings.debugDescription)
-                let hit = settings.cells.staticTexts["Liquid Glass"].firstMatch
-                if hit.exists { hit.tap(); sleep(2); glass = true; tinted = open(["Tinted", "Teñido"], in: settings) }
-            }
+            tinted = true
+        } else if glass {
+            tinted = open(["Tinted", "Teñido"], in: settings)
         }
         save("63-ajustes-tenido")
         guard tinted else {
