@@ -81,12 +81,32 @@
         }
       }
     },
+    "About": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acerca de"
+          }
+        }
+      }
+    },
     "About %@": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Acerca de %@"
+          }
+        }
+      }
+    },
+    "About Remote for Cider": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acerca de Remote for Cider"
           }
         }
       }
@@ -567,6 +587,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dolby Atmos"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listo"
           }
         }
       }
@@ -1121,6 +1151,16 @@
         }
       }
     },
+    "Report a Problem": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Informar de un problema"
+          }
+        }
+      }
+    },
     "Save": {
       "localizations": {
         "es": {
@@ -1271,6 +1311,16 @@
         }
       }
     },
+    "Source Code on GitHub": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código fuente en GitHub"
+          }
+        }
+      }
+    },
     "Switches EasyEffects on the computer between the Bocina and Normal presets.": {
       "localizations": {
         "es": {
@@ -1351,6 +1401,16 @@
         }
       }
     },
+    "Unofficial remote for Cider. Not affiliated with Cider Collective or Apple. Apple Music, Apple Digital Master and Apple Lossless are trademarks of Apple Inc.; Dolby Atmos is a trademark of Dolby Laboratories. MIT License © Jeferson Marín.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mando no oficial para Cider. Sin relación con Cider Collective ni con Apple. Apple Music, Apple Digital Master y Apple Lossless son marcas de Apple Inc.; Dolby Atmos es una marca de Dolby Laboratories. Licencia MIT © Jeferson Marín."
+          }
+        }
+      }
+    },
     "Up Next": {
       "localizations": {
         "es": {
@@ -1367,6 +1427,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Actualizada %@"
+          }
+        }
+      }
+    },
+    "Version %@ (%@)": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión %@ (%@)"
           }
         }
       }

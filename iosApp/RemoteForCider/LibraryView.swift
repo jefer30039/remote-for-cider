@@ -239,6 +239,7 @@ struct ConnectionMenuButton: View {
     @Environment(RemoteStore.self) private var store
     @State private var editing = false
     @State private var address = ""
+    @State private var about = false
 
     var body: some View {
         Menu {
@@ -255,6 +256,9 @@ struct ConnectionMenuButton: View {
             Button("Forget This Computer", systemImage: "xmark.circle", role: .destructive) {
                 store.forget()
             }
+            Section {
+                Button("About Remote for Cider", systemImage: "info.circle") { about = true }
+            }
         } label: {
             Image(systemName: "ellipsis")
         }
@@ -266,6 +270,50 @@ struct ConnectionMenuButton: View {
                 .autocorrectionDisabled()
             Button("Cancel", role: .cancel) {}
             Button("Save") { store.changeHost(address.trimmingCharacters(in: .whitespaces)) }
+        }
+        .sheet(isPresented: $about) { AboutView() }
+    }
+}
+
+/// "Acerca de": versión, repositorio y avisos de marcas (como en Android).
+struct AboutView: View {
+    @Environment(\.dismiss) private var dismiss
+    private static let repo = URL(string: "https://github.com/jefer30039/remote-for-cider")!
+
+    var body: some View {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        NavigationStack {
+            List {
+                Section {
+                    VStack(spacing: 6) {
+                        Image(systemName: "hifispeaker.and.homepod.fill")
+                            .font(.system(size: 44))
+                            .foregroundStyle(Color.accentRed)
+                            .padding(.bottom, 6)
+                        Text(verbatim: "Remote for Cider").font(.title2.bold())
+                        Text("Version \(version) (\(build))").foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                }
+                Section {
+                    SwiftUI.Link(destination: Self.repo) {
+                        Label("Source Code on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
+                    SwiftUI.Link(destination: Self.repo.appending(path: "issues")) {
+                        Label("Report a Problem", systemImage: "exclamationmark.bubble")
+                    }
+                } footer: {
+                    Text("Unofficial remote for Cider. Not affiliated with Cider Collective or Apple. Apple Music, Apple Digital Master and Apple Lossless are trademarks of Apple Inc.; Dolby Atmos is a trademark of Dolby Laboratories. MIT License © Jeferson Marín.")
+                }
+            }
+            .navigationTitle("About")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
         }
     }
 }
