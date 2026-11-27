@@ -16,6 +16,7 @@ data class SongLinks(
 )
 
 /** Las canciones de la biblioteca (`i.…`) se consultan en la biblioteca; el resto, en el catálogo. */
+@Throws(Throwable::class)
 suspend fun CiderApi.songLinks(id: String): SongLinks {
     val library = id.startsWith("i.")
     val path = if (library) "v1/me/library/songs/$id?include=albums,artists"
@@ -39,6 +40,7 @@ suspend fun CiderApi.songLinks(id: String): SongLinks {
  * Artista principal de un álbum (`albums` del catálogo o `library-albums`), como [HomeItem]
  * (`artists` o `library-artists`), para "ir al artista" desde la página del álbum.
  */
+@Throws(Throwable::class)
 suspend fun CiderApi.albumArtist(kind: String, id: String): HomeItem? {
     val path = if (kind == "library-albums") "v1/me/library/albums/$id?include=artists"
     else "v1/catalog/\$STOREFRONT/albums/$id?include=artists"

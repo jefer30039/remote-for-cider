@@ -56,6 +56,7 @@ private val ShelfViews = Views - setOf("latest-release", "top-songs")
 /** Lo que la app sabe abrir o reproducir (vídeos y curadores no). */
 private val Openable = setOf("albums", "playlists", "artists", "stations", "songs")
 
+@Throws(Throwable::class)
 suspend fun CiderApi.artistPage(catalogId: String): ArtistPage {
     val path = "v1/catalog/\$STOREFRONT/artists/$catalogId?views=${Views.joinToString(",")}" +
         "&extend=editorialArtwork,editorialVideo,artistBio,bornOrFormed,origin&art%5Burl%5D=f"

@@ -139,5 +139,9 @@ fi
 # Registro de la app (println de shared incluido) para depurar lo que no se ve.
 xcrun simctl spawn "$UDID" log show --last 20m --style compact \
   --predicate "process == \"RemoteForCider\"" > "$OUT/app.log" 2>&1 || true
+# Informes de cierre de la app (el simulador los deja en los del Mac).
+mkdir -p "$OUT/cierres"
+cp ~/Library/Logs/DiagnosticReports/RemoteForCider* "$OUT/cierres/" 2>/dev/null || true
+echo "Cierres de la app: $(ls "$OUT/cierres" | wc -l)"
 grep FALTA "$OUT/fake-cider.log" | sort -u > "$OUT/rutas-sin-grabar.txt" || true
 echo "Rutas sin grabar: $(wc -l < "$OUT/rutas-sin-grabar.txt")"

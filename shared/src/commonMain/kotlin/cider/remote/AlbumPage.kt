@@ -28,6 +28,7 @@ private val AlbumViews = listOf(
 /** Lo que se sabe abrir o reproducir: vídeos musicales en Cider, vídeos subidos en el teléfono. */
 private val AlbumOpenable = setOf("albums", "playlists", "artists", "stations", "songs", "music-videos", "uploaded-videos")
 
+@Throws(Throwable::class)
 suspend fun CiderApi.albumExtras(catalogId: String): AlbumExtras {
     val path = "v1/catalog/\$STOREFRONT/albums/$catalogId?views=${AlbumViews.joinToString(",")}&art%5Burl%5D=f"
     val root = CiderJson.parseToJsonElement(rawGet(path)).jsonObject

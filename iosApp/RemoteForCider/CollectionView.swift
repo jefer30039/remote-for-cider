@@ -1,5 +1,8 @@
+import OSLog
 import Shared
 import SwiftUI
+
+private let pageLog = Logger(subsystem: "io.github.jefer30039.remoteforcider", category: "paginas")
 
 /// Canción de un álbum o playlist.
 struct TrackItem: Identifiable, Hashable {
@@ -69,11 +72,11 @@ struct CollectionView: View {
                     }
                 }
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .ignoresSafeArea(edges: tall == nil ? [] : .top)
         }
         .background(bg.ignoresSafeArea())
         .environment(\.colorScheme, .dark)
-        .toolbarBackground(.hidden, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { moreMenu }
@@ -333,12 +336,16 @@ struct CollectionView: View {
         guard let api = store.api else { return }
         let kind = route.kind, id = route.id
         let coverTask = Task { try? await api.animatedCover(kind: kind, id: id) }
+        let started = Date()
+        pageLog.notice("\(route.kind, privacy: .public)/\(route.id, privacy: .public): pidiendo canciones")
         do {
             let fresh = try await Self.loadTracks(api, route)
             tracks = fresh
             CollectionCache.tracks[key] = fresh
             failure = nil
+            pageLog.notice("\(route.id, privacy: .public): \(fresh.count) canciones en \(Date().timeIntervalSince(started)) s")
         } catch {
+            pageLog.error("\(route.id, privacy: .public): \(String(describing: error), privacy: .public)")
             if tracks == nil { failure = error.localizedDescription }
         }
         if let fresh = await coverTask.value {

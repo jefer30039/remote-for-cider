@@ -64,6 +64,7 @@ data class HomeItem(
 )
 
 /** Inicio personal de Apple Music (`listen-now`), el mismo que muestra su app. */
+@Throws(Throwable::class)
 suspend fun CiderApi.home(timezone: String = "+00:00"): List<HomeShelf> {
     val path = "v1/me/recommendations?name=listen-now&timezone=$timezone&with=friendsMix,library,social" +
         "&extend=editorialArtwork,plainEditorialNotes,editorialVideo&art%5Burl%5D=c,f"
@@ -87,6 +88,7 @@ suspend fun CiderApi.home(timezone: String = "+00:00"): List<HomeShelf> {
 /** Pestañas Nuevo (`music`) y Radio (`radio`) de Apple Music: agrupaciones editoriales. */
 enum class BrowsePage(val grouping: String) { New("music"), Radio("radio") }
 
+@Throws(Throwable::class)
 suspend fun CiderApi.browse(page: BrowsePage): List<HomeShelf> {
     val path = "v1/editorial/\$STOREFRONT/groupings?name=${page.grouping}&platform=web&tabs=subscriber" +
         "&extend=editorialArtwork,artistUrl,plainEditorialNotes&art%5Burl%5D=f"

@@ -13,17 +13,21 @@ import kotlinx.serialization.json.put
 data class PlayRequest(val type: String, val id: String)
 
 /** AutoMix de Cider (`/audio/automix`), o null si no se pudo leer. */
+@Throws(Throwable::class)
 suspend fun CiderApi.automixEnabled(): Boolean? =
     runCatching { audioSetting("automix")["enabled"]?.jsonPrimitive?.content == "true" }.getOrNull()
 
+@Throws(Throwable::class)
 suspend fun CiderApi.setAutomix(enabled: Boolean) =
     setAudioSetting("automix", buildJsonObject { put("enabled", enabled) })
 
 /** Ajuste de audio con un solo campo booleano (`crossfade`, `atmos`…). */
+@Throws(Throwable::class)
 suspend fun CiderApi.setAudioFlag(name: String, field: String, value: Boolean) =
     setAudioSetting(name, buildJsonObject { put(field, value) })
 
 /** Campo de un ajuste de audio como texto (`"true"`, `"5"`, `"binaural"`…), o null. */
+@Throws(Throwable::class)
 suspend fun CiderApi.audioField(name: String, field: String): String? =
     runCatching { audioSetting(name)[field]?.jsonPrimitive?.content }.getOrNull()
 
@@ -36,6 +40,7 @@ fun CiderRemote.playFrom(items: List<PlayRequest>, start: Int) {
     playThenQueue(first.type, first.id, items.drop(start + 1).take(100).map { it.type to it.id })
 }
 
+@Throws(Throwable::class)
 suspend fun CiderApi.addToPlaylist(playlistId: String, items: List<PlayRequest>) =
     playlistAddTracks(playlistId, items.map { it.type to it.id })
 
@@ -46,6 +51,7 @@ val PlayerState.repeatMode: cider.remote.model.RepeatMode get() = repeat
  * Playlists de una categoría de Buscar (curador de Apple Music). Apple responde 400 con `limit` > 25
  * (`curatorPlaylists` de common pide 50): mientras se corrige allí, iOS usa esta.
  */
+@Throws(Throwable::class)
 suspend fun CiderApi.curatorPlaylistsPage(id: String): List<cider.remote.model.AmItem> =
     CiderJson.decodeFromString(
         cider.remote.model.Envelope.serializer(cider.remote.model.AmList.serializer()),
@@ -64,6 +70,7 @@ data class AudioState(
     val listeningMode: String?,
 )
 
+@Throws(Throwable::class)
 suspend fun CiderApi.audioState(): AudioState {
     val c = runCatching { audioSetting("crossfade") }.getOrNull()
     val a = runCatching { audioSetting("atmos") }.getOrNull()
@@ -78,14 +85,18 @@ suspend fun CiderApi.audioState(): AudioState {
     )
 }
 
+@Throws(Throwable::class)
 suspend fun CiderApi.setCrossfade(enabled: Boolean) = setAudioSetting("crossfade", buildJsonObject { put("enabled", enabled) })
 
+@Throws(Throwable::class)
 suspend fun CiderApi.setCrossfadeSeconds(seconds: Int) = setAudioSetting("crossfade", buildJsonObject { put("durationSec", seconds) })
 
 /** Cider lo aplica desde la siguiente canción. */
+@Throws(Throwable::class)
 suspend fun CiderApi.setAtmos(on: Boolean, mode: String) = setAudioSetting("atmos", buildJsonObject {
     if (on) put("enabled", true)
     put("devicePreferences", buildJsonObject { put("default", if (on) mode else "off") })
 })
 
+@Throws(Throwable::class)
 suspend fun CiderApi.setListeningMode(mode: String) = setAudioSetting("listening-mode", buildJsonObject { put("mode", mode) })

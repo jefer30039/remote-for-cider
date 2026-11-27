@@ -92,22 +92,27 @@ struct SearchView: View {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 ForEach(categories, id: \.id) { c in
                     NavigationLink(value: Route.category(id: c.id, name: c.name)) {
-                        ZStack(alignment: .bottomLeading) {
-                            Color(hex: c.bgColor) ?? Color(.secondarySystemFill)
-                            if let image = c.imageUrl.flatMap(URL.init(string:)) {
-                                AsyncImage(url: image) { phase in
-                                    phase.image?.resizable().scaledToFill()
+                        // La imagen es 4:1 con la persona centrada: se recorta al centro dentro de la celda.
+                        (Color(hex: c.bgColor) ?? Color(.secondarySystemFill))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 112)
+                            .overlay {
+                                if let image = c.imageUrl.flatMap(URL.init(string:)) {
+                                    AsyncImage(url: image) { phase in
+                                        phase.image?.resizable().scaledToFill()
+                                    }
                                 }
                             }
-                            LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom)
-                            Text(c.name)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .lineLimit(2)
-                                .padding(10)
-                        }
-                        .frame(height: 112)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay { LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom) }
+                            .overlay(alignment: .bottomLeading) {
+                                Text(c.name)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(2)
+                                    .padding(10)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .zoomSource(Route.category(id: c.id, name: c.name))
                     }
                     .buttonStyle(.plain)

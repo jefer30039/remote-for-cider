@@ -49,6 +49,7 @@ class CiderPairing(private val client: HttpClient) {
     @Serializable
     private data class Response(val data: Granted)
 
+    @Throws(Throwable::class)
     suspend fun request(
         endpoint: CiderEndpoint,
         appName: String,

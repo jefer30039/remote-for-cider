@@ -32,6 +32,7 @@ class CiderSession(host: String, port: Int, token: String) {
 class CiderPairingClient {
     private val http: HttpClient = ciderHttpClient()
 
+    @Throws(Throwable::class)
     suspend fun request(host: String, port: Int, appName: String): PairingResult =
         CiderPairing(http).request(
             CiderEndpoint(host, port), appName,

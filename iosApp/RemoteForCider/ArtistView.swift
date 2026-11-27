@@ -31,7 +31,6 @@ struct ArtistView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
         .task(id: id) { await load() }
     }
 
@@ -55,7 +54,9 @@ struct ArtistView: View {
                                     .frame(width: 110, height: 110)
                                     .zoomSource(latest.route)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    if let date = latest.releaseDate { Text(date).font(.caption.weight(.semibold)).foregroundStyle(secondary) }
+                                    if let date = latest.releaseDate.flatMap(Self.longDate) {
+                                        Text(date).font(.caption.weight(.semibold)).foregroundStyle(secondary)
+                                    }
                                     Text(latest.name).font(.headline).lineLimit(2)
                                     if let n = latest.trackCount?.intValue { Text("^[\(n) song](inflect: true)").font(.subheadline).foregroundStyle(secondary) }
                                 }
@@ -104,6 +105,7 @@ struct ArtistView: View {
                 .padding(.bottom, 30)
                 .foregroundStyle(.white)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .ignoresSafeArea(edges: .top)
         }
         .background(bg.ignoresSafeArea())
@@ -224,6 +226,15 @@ struct ArtistView: View {
             .padding(.horizontal, 20)
         }
         .navigationTitle(name)
+    }
+
+    /// `2026-12-01` → "1 dic 2026" (como Apple Music sobre el último lanzamiento).
+    private static func longDate(_ iso: String) -> String? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: iso) else { return nil }
+        return d.formatted(date: .abbreviated, time: .omitted).uppercased()
     }
 
     // MARK: Carga y acciones

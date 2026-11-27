@@ -271,7 +271,7 @@ final class DemoFlows: XCTestCase {
         sleep(1)
         if hero.exists {
             hero.tap()
-            sleep(4)
+            sleep(7)
             save("97-inicio-tarjeta-abierta")
         }
         app.terminate()

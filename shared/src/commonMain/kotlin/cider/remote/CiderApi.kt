@@ -73,43 +73,60 @@ class CiderApi(
     private val base = "${endpoint.httpBase}/api/v2"
 
     // --- Cliente ---
+    @Throws(Throwable::class)
     suspend fun clientInfo(): ClientInfo = get("/client/info")
 
     // --- Reproducción ---
+    @Throws(Throwable::class)
     suspend fun playback(): PlaybackSnapshot = get("/playback")
+    @Throws(Throwable::class)
     suspend fun nowPlaying(): Track = get("/playback/now-playing")
+    @Throws(Throwable::class)
     suspend fun audioQuality(): AudioQuality = get("/playback/audio-quality")
+    @Throws(Throwable::class)
     suspend fun play() = command(HttpMethod.Post, "/playback/play")
+    @Throws(Throwable::class)
     suspend fun pause() = command(HttpMethod.Post, "/playback/pause")
+    @Throws(Throwable::class)
     suspend fun toggle() = command(HttpMethod.Post, "/playback/toggle")
+    @Throws(Throwable::class)
     suspend fun next() = command(HttpMethod.Post, "/playback/next")
 
     /** Con [force] salta a la anterior aunque la canción vaya avanzada. */
+    @Throws(Throwable::class)
     suspend fun previous(force: Boolean = false) =
         command(HttpMethod.Post, "/playback/previous", buildJsonObject { if (force) put("force", true) })
 
+    @Throws(Throwable::class)
     suspend fun seek(seconds: Double) =
         command(HttpMethod.Post, "/playback/seek", buildJsonObject { put("position", seconds.coerceAtLeast(0.0)) })
 
+    @Throws(Throwable::class)
     suspend fun setRepeat(mode: RepeatMode) =
         command(HttpMethod.Put, "/playback/repeat", buildJsonObject { put("mode", mode.wire) })
 
+    @Throws(Throwable::class)
     suspend fun setShuffle(enabled: Boolean) =
         command(HttpMethod.Put, "/playback/shuffle", buildJsonObject { put("enabled", enabled) })
 
+    @Throws(Throwable::class)
     suspend fun setAutoplay(enabled: Boolean) =
         command(HttpMethod.Put, "/playback/autoplay", buildJsonObject { put("enabled", enabled) })
 
     /** Reproducción automática (∞): al acabar la cola, Cider sigue con música parecida. */
+    @Throws(Throwable::class)
     suspend fun autoplay(): Boolean = get<JsonObject>("/playback/autoplay")["enabled"]?.jsonPrimitive?.content == "true"
 
     /** Reproduce un enlace de Apple Music (`https://music.apple.com/...`) tal cual. */
+    @Throws(Throwable::class)
     suspend fun playUrl(url: String) = command(HttpMethod.Post, "/playback/play-url", buildJsonObject { put("url", url) })
 
     /** [type] estilo Apple Music: `songs`, `albums`, `playlists`, `library-songs`… */
+    @Throws(Throwable::class)
     suspend fun playItem(type: String, id: String) =
         command(HttpMethod.Post, "/playback/play-item", typeId(type, id))
 
+    @Throws(Throwable::class)
     suspend fun playCollection(type: String, id: String, shuffle: Boolean? = null) =
         command(HttpMethod.Post, "/playback/play-collection", buildJsonObject {
             put("type", type)
@@ -118,6 +135,7 @@ class CiderApi(
         })
 
     // --- Cola ---
+    @Throws(Throwable::class)
     suspend fun queue(offset: Int = 0, limit: Int = 50): Pair<QueuePage, Int> {
         val env: Envelope<QueuePage> = request(HttpMethod.Get, "/queue") {
             parameter("offset", offset)
@@ -126,15 +144,22 @@ class CiderApi(
         return env.data to (env.meta?.total ?: env.data.items.size)
     }
 
+    @Throws(Throwable::class)
     suspend fun queuePosition(): QueuePosition = get("/queue/position")
+    @Throws(Throwable::class)
     suspend fun queueJump(index: Int) = command(HttpMethod.Post, "/queue/jump", buildJsonObject { put("index", index) })
+    @Throws(Throwable::class)
     suspend fun queueAddNext(type: String, id: String) = command(HttpMethod.Post, "/queue/add-next", typeId(type, id))
+    @Throws(Throwable::class)
     suspend fun queueAddLater(type: String, id: String) = command(HttpMethod.Post, "/queue/add-later", typeId(type, id))
+    @Throws(Throwable::class)
     suspend fun queueMove(from: Int, to: Int) = command(HttpMethod.Post, "/queue/move", buildJsonObject {
         put("from", from)
         put("to", to)
     })
+    @Throws(Throwable::class)
     suspend fun queueRemove(index: Int) = command(HttpMethod.Delete, "/queue/items/$index")
+    @Throws(Throwable::class)
     suspend fun queueClear() = command(HttpMethod.Delete, "/queue")
 
     // --- Playlists (rutas propias de Cider, con permiso library) ---
@@ -142,6 +167,7 @@ class CiderApi(
      * Añade canciones al final de una playlist de la biblioteca. Las del catálogo se
      * importan antes a la biblioteca (`allowLibraryImport`). Límite de Cider: 10 escrituras/min.
      */
+    @Throws(Throwable::class)
     suspend fun playlistAddTracks(playlistId: String, tracks: List<Pair<String, String>>) =
         command(HttpMethod.Post, "/playlists/$playlistId/tracks", buildJsonObject {
             put("allowLibraryImport", true)
@@ -152,6 +178,7 @@ class CiderApi(
      * Crea una playlist en la biblioteca, con canciones opcionales (las del catálogo se importan).
      * Devuelve su id. Cider no deja borrar playlists: crear es definitivo.
      */
+    @Throws(Throwable::class)
     suspend fun createPlaylist(name: String, tracks: List<Pair<String, String>> = emptyList()): String? {
         val body = buildJsonObject {
             put("name", name)
@@ -167,6 +194,7 @@ class CiderApi(
         return env.data["id"]?.jsonPrimitive?.content
     }
 
+    @Throws(Throwable::class)
     suspend fun renamePlaylist(id: String, name: String) =
         command(HttpMethod.Patch, "/playlists/$id", buildJsonObject { put("name", name) })
 
@@ -175,33 +203,51 @@ class CiderApi(
      * Ajustes de audio de Cider tal cual: `crossfade` ({enabled, durationSec 0–30, …}), `automix`
      * ({enabled, …}), `atmos` ({enabled, binaural, …}) y `listening-mode` ({mode: off|game|antifatigue}).
      */
+    @Throws(Throwable::class)
     suspend fun audioSetting(name: String): JsonObject = get("/audio/$name")
+    @Throws(Throwable::class)
     suspend fun setAudioSetting(name: String, body: JsonObject) = command(HttpMethod.Patch, "/audio/$name", body)
+    @Throws(Throwable::class)
     suspend fun volume(): Double = get<JsonObject>("/audio/volume")["volume"]!!.jsonPrimitive.content.toDouble()
+    @Throws(Throwable::class)
     suspend fun setVolume(volume: Double) =
         command(HttpMethod.Patch, "/audio/volume", buildJsonObject { put("volume", volume.coerceIn(0.0, 1.0)) })
 
     // --- Biblioteca ---
+    @Throws(Throwable::class)
     suspend fun nowPlayingStatus(): NowPlayingStatus = get("/library/now-playing/status")
+    @Throws(Throwable::class)
     suspend fun addNowPlayingToLibrary() = command(HttpMethod.Post, "/library/now-playing/add")
+    @Throws(Throwable::class)
     suspend fun removeNowPlayingFromLibrary() = command(HttpMethod.Delete, "/library/now-playing")
+    @Throws(Throwable::class)
     suspend fun love() = command(HttpMethod.Post, "/library/now-playing/love")
+    @Throws(Throwable::class)
     suspend fun dislike() = command(HttpMethod.Post, "/library/now-playing/dislike")
+    @Throws(Throwable::class)
     suspend fun clearRating() = command(HttpMethod.Delete, "/library/now-playing/rating")
 
+    @Throws(Throwable::class)
     suspend fun playlists(offset: Int = 0, limit: Int = 50): Page<LibraryPlaylist> = page("/library/playlists", offset, limit)
+    @Throws(Throwable::class)
     suspend fun playlistSongs(id: String, offset: Int = 0, limit: Int = 50): Page<LibrarySong> =
         page("/library/playlists/$id/songs", offset, limit)
+    @Throws(Throwable::class)
     suspend fun albums(offset: Int = 0, limit: Int = 50): Page<LibraryAlbum> = page("/library/albums", offset, limit)
+    @Throws(Throwable::class)
     suspend fun albumSongs(id: String, offset: Int = 0, limit: Int = 50): Page<LibrarySong> =
         page("/library/albums/$id/songs", offset, limit)
+    @Throws(Throwable::class)
     suspend fun artists(offset: Int = 0, limit: Int = 50): Page<LibraryArtist> = page("/library/artists", offset, limit)
+    @Throws(Throwable::class)
     suspend fun artistAlbums(id: String, offset: Int = 0, limit: Int = 50): Page<LibraryAlbum> =
         page("/library/artists/$id/albums", offset, limit)
+    @Throws(Throwable::class)
     suspend fun songs(offset: Int = 0, limit: Int = 50): Page<LibrarySong> = page("/library/songs", offset, limit)
 
     // --- Letras (proxy de Apple Music, scope library) ---
     /** [catalogId] = `playParams.id` de la pista. Devuelve null si no tiene letra. */
+    @Throws(Throwable::class)
     suspend fun lyrics(catalogId: String, syllable: Boolean = false): Lyrics? {
         val kind = if (syllable) "syllable-lyrics" else "lyrics"
         val response = try {
@@ -222,18 +268,22 @@ class CiderApi(
      * Álbumes y playlists añadidos hace poco a la biblioteca, de 10 en 10 como mucho. Apple da
      * hasta 150 (15 páginas): los más antiguos ya no salen, igual que en su app.
      */
+    @Throws(Throwable::class)
     suspend fun recentlyAdded(limit: Int = 10, offset: Int = 0): List<AmItem> =
         amapiRaw("v1/me/library/recently-added?limit=${limit.coerceIn(1, 10)}&offset=$offset")
 
     /** Elementos fijados ("pins") de la biblioteca, con la foto del catálogo para artistas. */
+    @Throws(Throwable::class)
     suspend fun libraryPins(): List<AmItem> = amapiRaw("v1/me/library/pins?include=catalog")
 
     /** Artista con foto: de la biblioteca (`r.…`, foto del catálogo) o del catálogo. */
+    @Throws(Throwable::class)
     suspend fun artistInfo(id: String, catalog: Boolean): AmItem? =
         if (catalog) amapiRaw("v1/catalog/\$STOREFRONT/artists/$id").firstOrNull()
         else amapiRaw("v1/me/library/artists/$id?include=catalog").firstOrNull()
 
     /** Artistas de la biblioteca con foto del catálogo (orden alfabético, máx. 100 por página). */
+    @Throws(Throwable::class)
     suspend fun libraryArtistsWithArt(offset: Int, limit: Int = 100): List<AmItem> =
         amapiRaw("v1/me/library/artists?include=catalog&limit=${limit.coerceIn(1, 100)}&offset=$offset")
 
@@ -241,6 +291,7 @@ class CiderApi(
      * Portada animada de un álbum o playlist. [kind] como en las rutas: `albums`,
      * `playlists`, `library-albums`, `library-playlists`. Null si no tiene.
      */
+    @Throws(Throwable::class)
     suspend fun animatedCover(kind: String, id: String): AnimatedCover? {
         val path = if (kind.startsWith("library-")) "v1/me/library/${kind.removePrefix("library-")}/$id/catalog?extend=editorialVideo"
         else "v1/catalog/\$STOREFRONT/$kind/$id?extend=editorialVideo"
@@ -248,6 +299,7 @@ class CiderApi(
     }
 
     /** Portada animada del álbum de una canción del catálogo. */
+    @Throws(Throwable::class)
     suspend fun animatedCoverForSong(catalogSongId: String): AnimatedCover? =
         editorialVideo("v1/catalog/\$STOREFRONT/songs/$catalogSongId/albums?extend=editorialVideo")
 
@@ -263,6 +315,7 @@ class CiderApi(
      * para saber antes de abrirlos si tienen vídeo (las estanterías de Inicio no lo traen para los de la
      * biblioteca). Clave: id de la biblioteca.
      */
+    @Throws(Throwable::class)
     suspend fun libraryCovers(kind: String, ids: List<String>): Map<String, AnimatedCover> {
         if (ids.isEmpty()) return emptyMap()
         val path = "v1/me/library/$kind?ids=${ids.take(100).joinToString(",")}&include=catalog&extend=editorialVideo"
@@ -304,6 +357,7 @@ class CiderApi(
     }
 
     /** Categorías de la portada de búsqueda (las de Apple Music: Radio, Dance, Éxitos…). */
+    @Throws(Throwable::class)
     suspend fun searchCategories(): List<SearchCategory> {
         val path = "v1/recommendations/\$STOREFRONT?extend=editorialArtwork" +
             "&types=editorial-items,apple-curators,activities&name=search-landing"
@@ -327,17 +381,21 @@ class CiderApi(
     }
 
     /** Playlists de una categoría (curador de Apple Music). */
+    @Throws(Throwable::class)
     suspend fun curatorPlaylists(id: String): List<AmItem> =
         amapiRaw("v1/catalog/\$STOREFRONT/apple-curators/$id/playlists?limit=50")
 
     /** Álbumes de un artista del catálogo. */
+    @Throws(Throwable::class)
     suspend fun catalogArtistAlbums(artistId: String): List<AmItem> =
         amapiRaw("v1/catalog/\$STOREFRONT/artists/$artistId/albums?limit=50")
 
     /** Canciones de un álbum o playlist del catálogo (`albums` / `playlists`). */
     /** Un elemento del catálogo (`albums`, `playlists`, `artists`, `songs`…) con sus atributos. */
+    @Throws(Throwable::class)
     suspend fun catalogItem(type: String, id: String): AmItem? = amapiRaw("v1/catalog/\$STOREFRONT/$type/$id").firstOrNull()
 
+    @Throws(Throwable::class)
     suspend fun catalogTracks(type: String, id: String): List<AmItem> =
         amapiRaw("v1/catalog/\$STOREFRONT/$type/$id/tracks?limit=100")
 
@@ -346,6 +404,7 @@ class CiderApi(
      * los de sus primeras 100 canciones (Apple Music muestra "Dolby Atmos" o "Hi-Res Lossless" con que
      * alguna los tenga: en Replay 2026, 73 de 100 en Atmos y 11 en Hi-Res, y enseña los dos).
      */
+    @Throws(Throwable::class)
     suspend fun playlistAudioTraits(catalogId: String): List<String> =
         catalogTracks("playlists", catalogId).flatMap { it.attributes?.audioTraits.orEmpty() }.distinct()
 
@@ -354,6 +413,7 @@ class CiderApi(
      * no se pueden reproducir (sin `playParams`, p. ej. aún no publicadas). Las rutas
      * `/library/…/songs` de Cider no traen ese dato; Apple sí, con los mismos ids.
      */
+    @Throws(Throwable::class)
     suspend fun libraryUnplayable(type: String, id: String, max: Int = 1000): Set<String> {
         val out = mutableSetOf<String>()
         var offset = 0
@@ -366,6 +426,7 @@ class CiderApi(
         return out
     }
 
+    @Throws(Throwable::class)
     suspend fun search(term: String, limit: Int = 10): SearchResults {
         val env: Envelope<SearchEnvelope> = request(HttpMethod.Get, "/amapi/search") {
             parameter("term", term)
@@ -376,6 +437,7 @@ class CiderApi(
     }
 
     /** Respuesta cruda del proxy de Apple Music, para formas que no encajan en [AmItem]. */
+    @Throws(Throwable::class)
     suspend fun rawGet(path: String): String = request(HttpMethod.Get, "/amapi/raw/$path").bodyAsText()
 
     private suspend fun amapiRaw(path: String): List<AmItem> =
@@ -383,10 +445,12 @@ class CiderApi(
 
     // --- Servicio auxiliar del PC (puente/companion.py, puerto 10769) ---
     /** Modo bocina de EasyEffects: presets "Bocina" (graves) y "Normal". Null si el servicio no está. */
+    @Throws(Throwable::class)
     suspend fun speakerMode(): SpeakerMode? = runCatching {
         companion(HttpMethod.Get).body<SpeakerMode>()
     }.getOrNull()
 
+    @Throws(Throwable::class)
     suspend fun setSpeakerBass(on: Boolean): SpeakerMode =
         companion(HttpMethod.Post, buildJsonObject { put("bass", on) }).body()
 

@@ -237,6 +237,7 @@ class CiderRemote(
      * `DELETE /queue`; si Cider se llevara también la actual, se vuelve a poner en el mismo segundo
      * (y en pausa si lo estaba). Sin probar contra Cider todavía (2026-11-18).
      */
+    @Throws(Throwable::class)
     suspend fun clearUpNext() {
         val before = _state.value
         val params = before.track?.playParams
