@@ -18,9 +18,10 @@ struct NowPlayingView: View {
     @Environment(RemoteStore.self) private var store
     @Environment(PlayerSheet.self) private var sheet
 
-    enum Mode { case artwork, lyrics }
-    /// `-demoLyrics YES`: la hoja abre en la letra (capturas de CI).
-    @State private var mode: Mode = UserDefaults.standard.bool(forKey: "demoLyrics") ? .lyrics : .artwork
+    enum Mode { case artwork, lyrics, queue }
+    /// `-demoLyrics YES` / `-demoQueue YES`: la hoja abre en la letra o la cola (capturas de CI).
+    @State private var mode: Mode = UserDefaults.standard.bool(forKey: "demoLyrics") ? .lyrics
+        : UserDefaults.standard.bool(forKey: "demoQueue") ? .queue : .artwork
     /// Con la letra y sonando, los controles se repliegan a los 4 s sin tocar nada (Apple Music).
     @State private var controlsHidden = false
     @State private var touches = 0
@@ -32,9 +33,11 @@ struct NowPlayingView: View {
         let track = player?.track
         let playing = player?.isPlaying ?? false
         let lyrics = mode == .lyrics
+        // Letra y cola comparten la cabecera pequeña (carátula de 70 pt, título y "…").
+        let compact = mode != .artwork
         // Portada animada, en cuanto está su fotograma fijo (antes, la tarjeta de siempre). Con la
         // letra no: el vídeo se funde y queda el fondo de colores con la carátula en la cabecera.
-        let hero = lyrics ? nil : store.covers.current.flatMap { $0.image == nil ? nil : $0 }
+        let hero = compact ? nil : store.covers.current.flatMap { $0.image == nil ? nil : $0 }
         let hideControls = lyrics && controlsHidden
         // El lector respeta el área segura (así da sus márgenes) y el contenido la cubre entera: se
         // coloca en coordenadas de pantalla, las mismas de la miniatura del miniplayer.
@@ -52,7 +55,7 @@ struct NowPlayingView: View {
             // Cabecera de la letra (Android, medida en Apple Music): carátula de 70 pt a 28 pt del borde,
             // 30 pt bajo la barra de estado; la cabecera mide 120 pt.
             let header = CGRect(x: 28, y: insets.top + 30, width: 70, height: 70)
-            let art = lyrics ? header : card
+            let art = compact ? header : card
             // La hoja sube desde el borde superior del miniplayer.
             let distance = sheet.miniArt == .zero ? h * 0.85 : max(sheet.miniArt.minY - 9, 0)
             ZStack(alignment: .topLeading) {
@@ -106,12 +109,31 @@ struct NowPlayingView: View {
                         }
                         .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance))
                         .transition(.opacity)
+                }
 
+                if mode == .queue {
+                    // La cola pasa por debajo de la cabecera y se desvanece al llegar a ella.
+                    let bottom = h - M.progress - 34
+                    QueuePanel(player: player, top: insets.top + 120)
+                        .frame(width: w, height: max(bottom, 1))
+                        .mask {
+                            LinearGradient(stops: [.init(color: .clear, location: (insets.top + 96) / max(bottom, 1)),
+                                                   .init(color: .black, location: (insets.top + 122) / max(bottom, 1)),
+                                                   .init(color: .black, location: 0.94),
+                                                   .init(color: .clear, location: 1)],
+                                           startPoint: .top, endPoint: .bottom)
+                        }
+                        .modifier(SheetFade(progress: sheet.progress, drag: sheet.drag, distance: distance))
+                        .transition(.opacity)
+                }
+
+                if compact {
                     // Título, artista y "…" junto a la carátula pequeña; la franja entera es de la
-                    // cabecera (deslizar ahí cierra la hoja, no mueve la letra).
+                    // cabecera (deslizar ahí cierra la hoja, no mueve la letra ni la cola).
                     ZStack(alignment: .topLeading) {
                         Color.clear.contentShape(Rectangle())
                             .frame(width: w, height: insets.top + 120)
+                            .gesture(closeDrag(height: h))
                         HStack(spacing: 0) {
                             Color.clear
                                 .frame(width: 70, height: 70)
@@ -152,8 +174,8 @@ struct NowPlayingView: View {
                     TitleRow(player: player)
                         .frame(width: w - 2 * edge + 7.5, height: 44)
                         .position(x: edge + (w - 2 * edge + 7.5) / 2, y: titleY)
-                        .opacity(lyrics ? 0 : 1)
-                        .allowsHitTesting(!lyrics)
+                        .opacity(compact ? 0 : 1)
+                        .allowsHitTesting(!compact)
 
                     Group {
 
@@ -192,8 +214,8 @@ struct NowPlayingView: View {
                     CoverImage(artwork: track?.artwork, pixels: 1200, corner: 0, placeholder: false)
                 }
                 .modifier(ArtFlight(
-                    progress: sheet.progress, scale: playing || lyrics ? 1 : 0.78, drag: sheet.drag,
-                    from: sheet.miniArt, to: art, fromCorner: MiniPlayer.artCorner, toCorner: lyrics ? 6 : 10
+                    progress: sheet.progress, scale: playing || compact ? 1 : 0.78, drag: sheet.drag,
+                    from: sheet.miniArt, to: art, fromCorner: MiniPlayer.artCorner, toCorner: compact ? 6 : 10
                 ))
                 .animation(.spring(response: 0.5, dampingFraction: 0.72), value: playing)
                 .allowsHitTesting(false)
@@ -205,23 +227,9 @@ struct NowPlayingView: View {
             .contentShape(Rectangle())
             // Cualquier toque devuelve los controles (sin quitárselo a quien lo reciba).
             .simultaneousGesture(TapGesture().onEnded { touches += 1 })
-            // Deslizar hacia abajo cierra: la hoja entera baja con el dedo y, al soltar, decide por la
-            // velocidad proyectada (como iOS) si se recoge en el miniplayer o vuelve arriba.
-            .gesture(
-                DragGesture(minimumDistance: 12, coordinateSpace: .global)
-                    .onChanged { v in
-                        guard sheet.presented, sheet.progress == 1 || sheet.drag != 0 else { return }
-                        sheet.follow(v.translation.height)
-                    }
-                    .onEnded { v in
-                        let projected = max(v.predictedEndTranslation.height, v.translation.height)
-                        if projected > h * 0.3 {
-                            sheet.close(animation: .smooth(duration: 0.35))
-                        } else {
-                            sheet.settle()
-                        }
-                    }
-            )
+            // Deslizar hacia abajo cierra. Con la cola, solo desde la cabecera (la lista se desplaza y
+            // sus filas se arrastran): aquí el gesto se apaga y lo lleva la franja de la cabecera.
+            .gesture(closeDrag(height: h), including: mode == .queue ? .subviews : .all)
             .offset(x: -insets.leading, y: -insets.top)
         }
         .onAppear { sheet.appeared() }
@@ -238,6 +246,24 @@ struct NowPlayingView: View {
         .presentationBackground(.clear)
         // La hoja siempre es oscura: barra de estado y menús en blanco.
         .preferredColorScheme(.dark)
+    }
+
+    /// La hoja entera baja con el dedo y, al soltar, decide por la velocidad proyectada (como iOS) si
+    /// se recoge en el miniplayer o vuelve arriba.
+    private func closeDrag(height h: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
+            .onChanged { v in
+                guard sheet.presented, sheet.progress == 1 || sheet.drag != 0 else { return }
+                sheet.follow(v.translation.height)
+            }
+            .onEnded { v in
+                let projected = max(v.predictedEndTranslation.height, v.translation.height)
+                if projected > h * 0.3 {
+                    sheet.close(animation: .smooth(duration: 0.35))
+                } else {
+                    sheet.settle()
+                }
+            }
     }
 
     /// Anterior · reproducir/pausa · siguiente, centros separados 104 pt.
@@ -271,16 +297,35 @@ struct NowPlayingView: View {
     /// Letra · equipo · cola, centros a 111 pt.
     private func bottomRow(width: CGFloat) -> some View {
         ZStack {
-            SheetIcon(mode == .lyrics ? "quote.bubble.fill" : "quote.bubble", label: "Lyrics") {
+            SheetIcon(mode == .lyrics ? "quote.bubble.fill" : "quote.bubble", label: "Lyrics", active: mode == .lyrics) {
                 withAnimation(Self.modeChange) { mode = mode == .lyrics ? .artwork : .lyrics }
             }
             .offset(x: -M.bottomSpacing)
             .accessibilityIdentifier("lyricsButton")
             SheetIcon("laptopcomputer", label: "Computer") {}
-            SheetIcon("list.bullet", label: "Up Next") {}
-                .offset(x: M.bottomSpacing)
+            SheetIcon("list.bullet", label: "Up Next", active: mode == .queue) {
+                withAnimation(Self.modeChange) { mode = mode == .queue ? .artwork : .queue }
+            }
+            .overlay(alignment: .topTrailing) { queueBadge }
+            .offset(x: M.bottomSpacing)
+            .accessibilityIdentifier("queueButton")
         }
         .frame(width: width, height: 44)
+    }
+
+    /// Insignia de repetir/aleatorio sobre el icono de la cola (Apple Music).
+    @ViewBuilder private var queueBadge: some View {
+        let p = store.player
+        let symbol: String? = p?.repeatMode == .one ? "repeat.1" : p.map { $0.repeatMode != Shared.RepeatMode.none } == true ? "repeat" : p?.shuffle == true ? "shuffle" : nil
+        if let symbol {
+            Image(systemName: symbol)
+                .font(.system(size: 7, weight: .bold))
+                .frame(width: 13, height: 13)
+                .background(Circle().fill(.white.opacity(0.85)))
+                .foregroundStyle(.black.opacity(0.7))
+                .offset(x: -6, y: 8)
+                .allowsHitTesting(false)
+        }
     }
 
     /// Medidas (pt). Centros desde el borde inferior de la pantalla.
@@ -322,6 +367,8 @@ private enum Vibrancy {
 // MARK: - Título
 
 private struct TitleRow: View {
+    @Environment(RemoteStore.self) private var store
+    @Environment(\.openRoute) private var openRoute
     let player: PlayerState?
 
     var body: some View {
@@ -333,6 +380,7 @@ private struct TitleRow: View {
                         .font(.system(size: 20, weight: .semibold))
                         .lineLimit(1)
                         .vibrant(Vibrancy.title)
+                        .onTapGesture { go(album: true) }
                     if track?.isExplicit == true {
                         // El cuadro suma +46 y la letra queda recortada (se ve el fondo), como iOS.
                         Image(systemName: "e.square.fill")
@@ -347,9 +395,19 @@ private struct TitleRow: View {
                     .lineLimit(1)
                     .vibrant(Vibrancy.artist)
                     .frame(height: 24)
+                    .onTapGesture { go(album: false) }
             }
             Spacer(minLength: 0)
             MoreMenu(player: player)
+        }
+    }
+
+    /// Tocar el título abre el álbum y tocar el artista, su página (Apple Music).
+    private func go(album: Bool) {
+        guard let api = store.api, let id = player?.track?.playParams?.id else { return }
+        Task {
+            let links = await SongLinksCache.get(api, id)
+            if let route = (album ? links?.album : links?.artist)?.route { openRoute(route) }
         }
     }
 }
@@ -502,11 +560,13 @@ private struct VolumeRow: View {
 private struct SheetIcon: View {
     let symbol: String
     let label: LocalizedStringKey
+    var active = false
     let action: () -> Void
 
-    init(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) {
+    init(_ symbol: String, label: LocalizedStringKey, active: Bool = false, action: @escaping () -> Void) {
         self.symbol = symbol
         self.label = label
+        self.active = active
         self.action = action
     }
 
@@ -514,7 +574,7 @@ private struct SheetIcon: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 20))
-                .vibrant(Vibrancy.icon)
+                .vibrant(active ? 0.9 : Vibrancy.icon)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }

@@ -12,24 +12,27 @@ struct MainTabs: View {
     @State private var tab = AppTab(rawValue: UserDefaults.standard.string(forKey: "demoTab") ?? "") ?? .home
     @State private var sheet = PlayerSheet(open: UserDefaults.standard.bool(forKey: "demoOpenPlayer"))
 
+    @State private var paths: [AppTab: [Route]] = [:]
+
     var body: some View {
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house.fill", value: AppTab.home) {
-                NavigationStack { PlaceholderPage(title: "Home") }
+                TabStack(path: path(.home)) { ShelvesPage(source: .home) }
             }
             Tab("New", systemImage: "square.grid.2x2.fill", value: AppTab.new) {
-                NavigationStack { PlaceholderPage(title: "New") }
+                TabStack(path: path(.new)) { ShelvesPage(source: .new) }
             }
             Tab("Radio", systemImage: "dot.radiowaves.left.and.right", value: AppTab.radio) {
-                NavigationStack { PlaceholderPage(title: "Radio") }
+                TabStack(path: path(.radio)) { ShelvesPage(source: .radio) }
             }
             Tab("Library", systemImage: "square.stack.fill", value: AppTab.library) {
-                NavigationStack { LibraryView() }
+                TabStack(path: path(.library)) { LibraryView() }
             }
             Tab(value: AppTab.search, role: .search) {
-                NavigationStack { PlaceholderPage(title: "Search") }
+                TabStack(path: path(.search)) { SearchView() }
             }
         }
+        .tint(.accentRed)
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             MiniPlayer { sheet.open() }
@@ -39,41 +42,17 @@ struct MainTabs: View {
         .fullScreenCover(isPresented: $sheet.presented) {
             NowPlayingView()
                 .environment(sheet)
+                // Desde la hoja (título → álbum, artista → su página): se cierra y se abre en la pestaña actual.
+                .environment(\.openRoute, { route in
+                    sheet.close(animation: .smooth(duration: 0.35))
+                    paths[tab, default: []].append(route)
+                })
         }
         .environment(sheet)
     }
-}
 
-/// Pantallas aún sin hacer: con contenido desplazable para probar que la barra se minimiza.
-struct PlaceholderPage: View {
-    let title: LocalizedStringKey
-    @Environment(RemoteStore.self) private var store
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(0..<12) { _ in
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(.secondarySystemFill))
-                        .frame(height: 120)
-                }
-            }
-            .padding(.horizontal, 20)
-        }
-        .navigationTitle(title)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    if let c = store.connection {
-                        Text("\(c.host):\(String(c.port))")
-                    }
-                    Button("Forget this computer", systemImage: "xmark.circle", role: .destructive) {
-                        store.forget()
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-            }
-        }
+    private func path(_ tab: AppTab) -> Binding<[Route]> {
+        Binding(get: { paths[tab] ?? [] }, set: { paths[tab] = $0 })
     }
 }
+

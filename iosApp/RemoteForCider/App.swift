@@ -14,12 +14,18 @@ struct RemoteForCiderApp: App {
 
 struct RootView: View {
     @Environment(RemoteStore.self) private var store
+    @Environment(\.scenePhase) private var phase
 
     var body: some View {
-        if store.connection == nil {
-            ConnectView()
-        } else {
-            MainTabs()
+        Group {
+            if store.connection == nil {
+                ConnectView()
+            } else {
+                MainTabs()
+            }
+        }
+        .onChange(of: phase) { old, new in
+            if new == .active, old != .active { store.onForeground() }
         }
     }
 }

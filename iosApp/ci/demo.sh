@@ -87,6 +87,8 @@ shot 02-inicio-miniplayer-es 8 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab home
 shot 03-biblioteca-albumes-es 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab library
 shot 04-reproduccion-es 14 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES
 shot 07-letra-es 16 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES -demoLyrics YES
+shot 08-cola-es 12 "${CONNECTED[@]}" "${SPANISH[@]}" -demoOpenPlayer YES -demoQueue YES
+shot 09-buscar-es 8 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab search
 shot 05-conectar-en 5
 xcrun simctl ui "$UDID" appearance dark
 shot 06-biblioteca-albumes-oscuro-es 10 "${CONNECTED[@]}" "${SPANISH[@]}" -demoTab library

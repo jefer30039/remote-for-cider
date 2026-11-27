@@ -105,6 +105,188 @@ final class DemoFlows: XCTestCase {
         sleep(3)
     }
 
+    /// Cola: abrir la hoja, pasar a la cola, cambiar aleatorio, quitar una canción deslizando,
+    /// moverla arrastrando y saltar a otra tocándola.
+    func testQueue() {
+        record("25-recorrido-cola")
+        let app = launch(["-demoTab", "library"])
+        let mini = app.otherElements["miniPlayer"]
+        XCTAssertTrue(mini.waitForExistence(timeout: 10))
+        sleep(3)
+        mini.tap()
+        sleep(2)
+        let queue = app.buttons["queueButton"]
+        XCTAssertTrue(queue.waitForExistence(timeout: 5))
+        queue.tap()
+        sleep(3)
+        save("70-cola")
+        write("70-cola-arbol.txt", app.debugDescription)
+        let shuffle = app.buttons["queueShuffle"]
+        if shuffle.waitForExistence(timeout: 3) {
+            shuffle.tap()
+            sleep(2)
+            save("71-cola-aleatorio")
+            shuffle.tap()
+            sleep(1)
+        }
+        let rows = app.descendants(matching: .any).matching(identifier: "queueRow")
+        if rows.count > 1 {
+            rows.element(boundBy: 0).swipeLeft(velocity: .fast)
+            sleep(2)
+            save("72-cola-quitar")
+        }
+        if rows.count > 3 {
+            let row = rows.element(boundBy: 0)
+            let target = rows.element(boundBy: 2)
+            row.press(forDuration: 0.8, thenDragTo: target)
+            sleep(2)
+            save("73-cola-mover")
+            rows.element(boundBy: 1).tap()
+            sleep(3)
+            save("74-cola-saltar")
+        }
+        queue.tap()
+        sleep(3)
+    }
+
+    /// Biblioteca: Álbumes → un álbum (zoom), tocar una canción, volver; Playlists → una playlist;
+    /// Artistas → un artista; Canciones.
+    func testLibraryPages() {
+        record("26-recorrido-biblioteca")
+        let app = launch(["-demoTab", "library"])
+        sleep(4)
+        save("80-biblioteca")
+        func back() {
+            let button = app.navigationBars.buttons.firstMatch
+            if button.exists { button.tap() } else { app.swipeRight() }
+            sleep(2)
+        }
+        let albums = app.buttons["library-albums"]
+        if albums.waitForExistence(timeout: 5) {
+            albums.tap()
+            sleep(3)
+            save("81-albumes")
+            let tile = app.buttons.matching(identifier: "coverTile").firstMatch
+            if tile.waitForExistence(timeout: 5) {
+                tile.tap()
+                sleep(4)
+                save("82-album")
+                write("82-album-arbol.txt", app.debugDescription)
+                app.swipeUp(velocity: .slow)
+                sleep(2)
+                save("83-album-abajo")
+                let track = app.descendants(matching: .any).matching(identifier: "trackRow").element(boundBy: 1)
+                if track.exists { track.tap(); sleep(2) }
+                back()
+            }
+            back()
+        }
+        let playlists = app.buttons["library-playlists"]
+        if playlists.waitForExistence(timeout: 5) {
+            playlists.tap()
+            sleep(3)
+            save("84-playlists")
+            let row = app.descendants(matching: .any).matching(identifier: "playlistRow").firstMatch
+            if row.waitForExistence(timeout: 5) {
+                row.tap()
+                sleep(4)
+                save("85-playlist")
+                back()
+            }
+            back()
+        }
+        let artists = app.buttons["library-artists"]
+        if artists.waitForExistence(timeout: 5) {
+            artists.tap()
+            sleep(3)
+            save("86-artistas")
+            let row = app.descendants(matching: .any).matching(identifier: "artistRow").firstMatch
+            if row.waitForExistence(timeout: 5) {
+                row.tap()
+                sleep(5)
+                save("87-artista")
+                app.swipeUp(velocity: .slow)
+                sleep(2)
+                save("88-artista-abajo")
+                back()
+            }
+            back()
+        }
+        let songs = app.buttons["library-songs"]
+        if songs.waitForExistence(timeout: 5) {
+            songs.tap()
+            sleep(3)
+            save("89-canciones")
+            let row = app.descendants(matching: .any).matching(identifier: "songRow").firstMatch
+            if row.waitForExistence(timeout: 3) {
+                row.press(forDuration: 1.2)
+                sleep(2)
+                save("89b-menu-cancion")
+                app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
+                sleep(1)
+            }
+        }
+    }
+
+    /// Buscar: categorías, escribir, resultados y abrir uno.
+    func testSearch() {
+        record("27-recorrido-buscar")
+        let app = launch(["-demoTab", "search"])
+        sleep(4)
+        save("90-buscar")
+        let field = app.searchFields.firstMatch
+        if field.waitForExistence(timeout: 5) {
+            field.tap()
+            sleep(1)
+            field.typeText("SZA")
+            sleep(4)
+            save("91-buscar-resultados")
+            write("91-buscar-arbol.txt", app.debugDescription)
+            let result = app.descendants(matching: .any).matching(identifier: "searchResult").firstMatch
+            if result.exists {
+                result.tap()
+                sleep(4)
+                save("92-buscar-abierto")
+            }
+        }
+        let category = app.descendants(matching: .any).matching(identifier: "categoryTile").firstMatch
+        if category.exists {
+            category.tap()
+            sleep(3)
+            save("93-categoria")
+        }
+    }
+
+    /// Inicio, Nuevo y Radio: desplazar cada una y abrir una tarjeta grande desde Inicio.
+    func testShelves() {
+        record("28-recorrido-inicio-nuevo-radio")
+        var app = launch(["-demoTab", "home"])
+        sleep(5)
+        save("95-inicio")
+        app.swipeUp(velocity: .slow)
+        sleep(2)
+        save("96-inicio-abajo")
+        let hero = app.descendants(matching: .any).matching(identifier: "heroCard").firstMatch
+        app.swipeDown(velocity: .slow)
+        sleep(1)
+        if hero.exists {
+            hero.tap()
+            sleep(4)
+            save("97-inicio-tarjeta-abierta")
+        }
+        app.terminate()
+        app = launch(["-demoTab", "new"])
+        sleep(5)
+        save("98-nuevo")
+        app.swipeUp(velocity: .slow)
+        sleep(2)
+        save("98b-nuevo-abajo")
+        app.terminate()
+        app = launch(["-demoTab", "radio"])
+        sleep(5)
+        save("99-radio")
+    }
+
     /// Liquid Glass teñido (Ajustes › Pantalla y brillo › Liquid Glass › Teñido, iOS 26.1+): se activa en
     /// los Ajustes del simulador y se repiten las capturas de la barra, el miniplayer y la hoja para
     /// compararlas con las de siempre (transparente). Va el último: deja el ajuste cambiado.

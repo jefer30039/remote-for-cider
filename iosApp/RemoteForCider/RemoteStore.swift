@@ -46,6 +46,11 @@ final class RemoteStore {
     private(set) var connection: Connection?
     private(set) var player: PlayerState?
     private(set) var link: LinkStatus = .connecting
+    /// Sube con cada aviso de cola o de canción nueva de Cider: la cola y las listas lo vigilan.
+    private(set) var queueRevision = 0
+    /// Buscando el PC en la red (tras perder la conexión o a mano).
+    private(set) var searching = false
+    @ObservationIgnored private var finder: Task<Void, Never>?
     /// Portada animada de la canción actual (se consulta al cambiar de canción).
     let covers = AnimatedCovers()
     /// Tras perder la conexión el silencio sigue un rato (si no, en segundo plano iOS suspendería la
@@ -55,6 +60,7 @@ final class RemoteStore {
 
     @ObservationIgnored private var session: CiderSession?
     @ObservationIgnored private var observer: Task<Void, Never>?
+    @ObservationIgnored private var signalObserver: Task<Void, Never>?
     @ObservationIgnored private lazy var lockScreen = LockScreenPlayer(commands: .init(
         togglePlay: { [weak self] in self?.togglePlay() },
         play: { [weak self] in if self?.player?.isPlaying == false { self?.togglePlay() } },
@@ -83,11 +89,21 @@ final class RemoteStore {
                 self?.apply(state)
             }
         }
+        signalObserver = Task { [weak self] in
+            for await signal in session.remote.signals {
+                switch onEnum(of: signal) {
+                case .queueChanged, .trackChanged: self?.queueRevision += 1
+                case .unauthorized: break
+                }
+            }
+        }
     }
 
     func disconnect() {
         observer?.cancel()
         observer = nil
+        signalObserver?.cancel()
+        signalObserver = nil
         session?.close()
         session = nil
         player = nil
@@ -95,6 +111,9 @@ final class RemoteStore {
         lockScreenGrace?.cancel()
         lockScreenGrace = nil
         lockScreen.setActive(false)
+        finder?.cancel()
+        finder = nil
+        searching = false
     }
 
     func forget() {
@@ -111,6 +130,20 @@ final class RemoteStore {
         case .offline(let offline): link = .offline(offline.reason)
         }
         // Silencio y reproductor del sistema mientras hay conexión (también con Cider en pausa).
+        if link == .online {
+            finder?.cancel()
+            finder = nil
+            searching = false
+        } else if case .offline = link, finder == nil {
+            // Como Android: 1 s después de perderla se busca el PC en la red y luego cada 10 s.
+            finder = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                while !Task.isCancelled {
+                    guard let self, await self.findPc() == false else { return }
+                    try? await Task.sleep(for: .seconds(10))
+                }
+            }
+        }
         if link == .online {
             lockScreenGrace?.cancel()
             lockScreenGrace = nil
@@ -129,6 +162,46 @@ final class RemoteStore {
         lockScreen.update(state)
     }
 
+    // MARK: - Búsqueda del PC
+
+    /// "Buscar el PC en la red" del menú.
+    func searchNow() {
+        Task { _ = await findPc() }
+    }
+
+    /// Busca el Cider emparejado (mismo token) en la red local y, si cambió de IP, se reconecta.
+    /// Verdadero si lo encontró.
+    @discardableResult
+    func findPc() async -> Bool {
+        guard let current = connection, !searching else { return false }
+        searching = true
+        defer { searching = false }
+        guard let ip = await PcFinder.find(port: current.port, token: current.token, preferred: current.host) else { return false }
+        if ip != current.host || link != .online {
+            let moved = Connection(host: ip, port: current.port, token: current.token)
+            moved.save()
+            connect(moved)
+        }
+        return true
+    }
+
+    /// "Cambiar dirección…": misma conexión (puerto y token) en otra IP.
+    func changeHost(_ host: String) {
+        guard let current = connection, !host.isEmpty else { return }
+        let moved = Connection(host: host, port: current.port, token: current.token)
+        moved.save()
+        connect(moved)
+    }
+
+    /// Al volver a la app: si Cider no responde en la dirección guardada, se busca enseguida.
+    func onForeground() {
+        remote?.refresh()
+        guard let current = connection else { return }
+        Task {
+            if !(await PcFinder.answers(current.host, port: current.port, token: current.token)) { await findPc() }
+        }
+    }
+
     // MARK: - Comandos (optimistas en shared; el socket corrige)
 
     func togglePlay() { remote?.togglePlay() }
@@ -137,7 +210,29 @@ final class RemoteStore {
     func seek(to seconds: Double) { remote?.seek(seconds: seconds) }
     func setVolume(_ volume: Double) { remote?.setVolume(volume: volume) }
     func toggleShuffle() { remote?.toggleShuffle() }
+    func setShuffle(_ on: Bool) { if player?.shuffle != on { remote?.toggleShuffle() } }
     func cycleRepeat() { remote?.cycleRepeat() }
     func toggleLove() { remote?.toggleLove() }
     func toggleInLibrary() { remote?.toggleInLibrary() }
+
+    /// Reproduce un elemento suelto (canción, álbum, playlist, emisora…).
+    func play(type: String, id: String) {
+        guard let api else { return }
+        Task { try? await api.playItem(type: type, id: id) }
+    }
+
+    /// Reproduce la canción `start` de una lista y encola detrás las siguientes, en orden.
+    func play(_ items: [PlayRequest], from start: Int) {
+        remote?.playFrom(items: items, start: Int32(start))
+    }
+
+    func playNext(type: String, id: String) {
+        guard let api else { return }
+        Task { try? await api.queueAddNext(type: type, id: id) }
+    }
+
+    func playLast(type: String, id: String) {
+        guard let api else { return }
+        Task { try? await api.queueAddLater(type: type, id: id) }
+    }
 }
