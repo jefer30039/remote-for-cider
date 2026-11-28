@@ -54,6 +54,12 @@ jobs:
         run: |
           xcodebuild -version
           xcrun simctl list runtimes | grep iOS
+          # Modelos que admite el simulador de iOS 27 (no todos: el iPhone 11 da "Incompatible device").
+          xcrun simctl list runtimes available -j | python3 -c '
+          import json, sys
+          for r in json.load(sys.stdin)["runtimes"]:
+              if "iOS-27" in r["identifier"]:
+                  print(r["identifier"] + ":", ", ".join(d["name"] for d in r.get("supportedDeviceTypes", [])))'
 
       # El simulador tarda ~7 min en arrancar: se arranca ya, en segundo plano, mientras se compila.
       # demo.sh espera con `bootstatus` a que termine (SIM_UDID).
