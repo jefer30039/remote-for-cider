@@ -20,9 +20,12 @@ for runtime, devices in json.load(sys.stdin)["devices"].items():
             best = (version, d["udid"])
 print(best[1] if best else "")')
 if [ -z "$UDID" ]; then
-  RUNTIME_ID=$(xcrun simctl list runtimes available -j | SIM_RUNTIME="$SIM_RUNTIME" python3 -c '
+  # El más nuevo que admita el modelo: hay runtimes de iOS 27 solo para algunos (el iPhone 11 da
+  # "Incompatible device" en `iOS-27-2-iPhone19-4` y va bien en `iOS-27-0`).
+  RUNTIME_ID=$(xcrun simctl list runtimes available -j | SIM_RUNTIME="$SIM_RUNTIME" SIM_DEVICE="$SIM_DEVICE" python3 -c '
 import json, os, sys
-ids = [r["identifier"] for r in json.load(sys.stdin)["runtimes"] if os.environ["SIM_RUNTIME"] in r["identifier"]]
+ids = [r["identifier"] for r in json.load(sys.stdin)["runtimes"] if os.environ["SIM_RUNTIME"] in r["identifier"]
+       and any(d["name"] == os.environ["SIM_DEVICE"] for d in r.get("supportedDeviceTypes", []))]
 print(sorted(ids)[-1] if ids else "")')
   echo "Creando $SIM_DEVICE con $RUNTIME_ID" >&2
   UDID=$(xcrun simctl create "$SIM_DEVICE" "$SIM_DEVICE" "$RUNTIME_ID")
