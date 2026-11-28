@@ -28,9 +28,10 @@ struct ConnectView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
-                    Image(systemName: "hifispeaker.and.homepod.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(Color.accentRed)
+                    Image("AboutIcon")
+                        .resizable()
+                        .frame(width: 88, height: 88)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .padding(.top, 40)
                     VStack(spacing: 8) {
                         Text("Remote for Cider")
