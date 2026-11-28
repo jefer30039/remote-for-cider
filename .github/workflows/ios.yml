@@ -7,12 +7,17 @@ on:
   push:
     branches: [ios]
   workflow_dispatch:
+    inputs:
+      sim_device:
+        description: Simulador para las capturas y los recorridos (p. ej. "iPhone 11" para ver una pantalla pequeña con muesca)
+        default: iPhone 18 Pro Max
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-${{ github.ref }}
+  # Una ronda en otro simulador (lanzada a mano) no cancela la de siempre ni al revés.
+  group: ios-${{ github.ref }}-${{ inputs.sim_device || 'default' }}
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +28,7 @@ jobs:
     timeout-minutes: 90
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
-      SIM_DEVICE: iPhone 18 Pro Max   # el iPhone del usuario
+      SIM_DEVICE: ${{ inputs.sim_device || 'iPhone 18 Pro Max' }}   # el iPhone del usuario
       SIM_RUNTIME: iOS-27
     steps:
       - uses: actions/checkout@v4
